@@ -8,9 +8,23 @@ An async network I/O library, imitates boost.asio, based on io_uring and liburin
 
 ***Full functionality requires a minimum kernel version of 5.19.***
 
+[Example (echo server with end-of-line marker)](https://github.com/ChromoXYX/chxnet/blob/main/exec/main.cpp)
+
 ## Dependency
 
 - [liburing](https://github.com/axboe/liburing)
+
+## How to build
+
+Run shell:
+
+```shell
+autoreconf -i -v
+./configure
+# ./configure --with-liburing=/path/to/liburing if liburing not in system default paths.
+# See ./configure --help for details.
+make
+```
 
 ## Design
 
