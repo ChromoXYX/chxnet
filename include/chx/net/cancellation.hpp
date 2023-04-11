@@ -1,11 +1,9 @@
 #pragma once
 
-#if CHXNET_KERNEL_VERSION_MAJOR < 5
+#include "./detail/version_compare.hpp"
+
+#if CHXNET_KERNEL_VERSION_LESS(5, 19)
 #warning chxnet cancellation for single async task requires at least kernel version 5.19
-#else
-#if CHXNET_KERNEL_VERSION_MAJOR == 5 && CHXNET_KERNEL_VERSION_MINOR < 19
-#warning chxnet cancellation for single async task requires at least kernel version 5.19
-#endif
 #endif
 
 #include "./async_token.hpp"
