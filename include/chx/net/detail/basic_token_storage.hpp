@@ -73,11 +73,7 @@ class basic_token_storage : CHXNET_NONCOPYABLE {
             : _M_r(std::forward<_Args>(_args)...) {}
 
         virtual __ret_type invoke(_Ts... _ts) override {
-            if constexpr (std::is_pointer_v<_R>) {
-                return (*_M_r)(std::forward<_Ts>(_ts)...);
-            } else {
-                return _M_r(std::forward<_Ts>(_ts)...);
-            }
+            return _M_r(std::forward<_Ts>(_ts)...);
         }
         virtual void* underlying_data() noexcept(true) override {
             return &_M_r;
@@ -117,10 +113,7 @@ class basic_token_storage : CHXNET_NONCOPYABLE {
               typename = std::enable_if_t<!std::is_same_v<
                   std::decay_t<CallableObj>, basic_token_storage>>>
     basic_token_storage(CallableObj&& callable_obj) {
-        using __no_ref = std::remove_reference_t<CallableObj>;
-        using __internal_obj_type =
-            std::conditional_t<std::is_function_v<__no_ref>,
-                               std::add_pointer_t<__no_ref>, __no_ref>;
+        using __internal_obj_type = std::remove_reference_t<CallableObj>;
         using __w = __wrapper<__internal_obj_type>;
         if constexpr (sizeof(__w) <= buffer_size && alignof(__w) <= align) {
             __M_ptr = new (__M_internal_buf)

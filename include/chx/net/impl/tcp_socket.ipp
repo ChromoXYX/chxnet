@@ -24,6 +24,8 @@ struct simple_write {};
 struct readv {};
 struct writev {};
 
+struct connect {};
+
 struct read_until {
     template <typename Socket, typename DynamicBuffer, typename StopCond>
     struct operation : StopCond {
@@ -254,6 +256,14 @@ struct chx::net::detail::async_operation<chx::net::ip::detail::tags::splice> {
                               std::size_t, CompletionToken&&);
 };
 
+template <>
+struct chx::net::detail::async_operation<chx::net::ip::detail::tags::connect> {
+    template <typename CompletionToken>
+    decltype(auto) operator()(io_context*, ip::tcp::socket*,
+                              const ip::tcp::endpoint&,
+                              CompletionToken&& completion_token);
+};
+
 namespace chx::net::ip {
 class tcp::socket : public socket_base {
     template <typename Sock, typename File>
@@ -298,6 +308,14 @@ class tcp::socket : public socket_base {
      * @param other The socket to be moved.
      */
     socket(socket&& other) : socket_base(std::move(other)) {}
+
+    template <typename CompletionToken>
+    decltype(auto) async_connect(const ip::tcp::endpoint& end_point,
+                                 CompletionToken&& completion_token) {
+        return net::detail::async_operation<ip::detail::tags::connect>()(
+            &get_associated_io_context(), this, end_point,
+            std::forward<CompletionToken>(completion_token));
+    }
 
     /**
      * @brief Submit a write async task for a sequence of buffers.
@@ -630,6 +648,39 @@ operator()(io_context* ctx, ip::tcp::socket* sock, int fd_in, int fd_out,
                 }
                 completion_token(self->__M_ec,
                                  static_cast<std::size_t>(self->__M_res));
+                return 0;
+            },
+            std::forward<CompletionToken>(completion_token))),
+        std::forward<CompletionToken>(completion_token));
+}
+
+template <typename CompletionToken>
+decltype(auto)
+chx::net::detail::async_operation<chx::net::ip::detail::tags::connect>::
+operator()(io_context* ctx, ip::tcp::socket* sock, const ip::tcp::endpoint& ep,
+           CompletionToken&& completion_token) {
+    io_context::task_t* task =
+        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
+    if (!ctx->is_closed()) {
+        auto* sqe = ctx->get_sqe(task);
+        if (ep.address().is_v4()) {
+            auto addr = ep.sockaddr_in();
+            io_uring_prep_connect(sqe, sock->native_handler(),
+                                  (struct sockaddr*)&addr, sizeof(addr));
+            ctx->submit();
+        } else {
+            auto addr = ep.sockaddr_in6();
+            io_uring_prep_connect(sqe, sock->native_handler(),
+                                  (struct sockaddr*)&addr, sizeof(addr));
+            ctx->submit();
+        }
+    }
+    return detail::async_token_init(
+        task->__M_token.emplace(detail::async_token_generate(
+            task,
+            [](auto& completion_token,
+               io_context::task_t* self) mutable -> int {
+                completion_token(self->__M_ec);
                 return 0;
             },
             std::forward<CompletionToken>(completion_token))),

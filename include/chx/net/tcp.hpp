@@ -15,6 +15,7 @@ namespace chx::net::ip {
  *
  */
 class address_v4 {
+    // always host byte order
     in_addr_t __M_raw = {};
 
   public:
@@ -53,7 +54,8 @@ class address_v4 {
 
     std::string to_string() const {
         char buf[INET_ADDRSTRLEN] = {0};
-        auto* p = inet_ntop(AF_INET, &__M_raw, buf, sizeof(buf));
+        auto hr = htonl(__M_raw);
+        auto* p = inet_ntop(AF_INET, &hr, buf, sizeof(buf));
         if (p) {
             return {p};
         } else {
@@ -64,7 +66,7 @@ class address_v4 {
     static address_v4 from_string(const char* cstr) {
         in_addr_t _r = {};
         if (inet_pton(AF_INET, cstr, &_r) == 1) {
-            return address_v4{_r};
+            return address_v4{ntohl(_r)};
         } else {
             __CHXNET_THROW(EAFNOSUPPORT);
         }
@@ -77,7 +79,7 @@ class address_v4 {
         } else {
             detail::assign_ec(ec, EAFNOSUPPORT);
         }
-        return address_v4{_r};
+        return address_v4{ntohl(_r)};
     }
 
     static address_v4 from_string(const std::string& str) {
@@ -285,6 +287,23 @@ class tcp {
             } else {
                 return tcp::v6();
             }
+        }
+
+        struct sockaddr_in sockaddr_in() const {
+            struct sockaddr_in addr = {};
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(port());
+            address_v4().assign(&addr.sin_addr.s_addr);
+            return addr;
+        }
+        struct sockaddr_in6 sockaddr_in6() const {
+            struct sockaddr_in6 addr = {};
+            addr.sin6_family = AF_INET6;
+            addr.sin6_port = htons(port());
+            address_v6().assign(&addr.sin6_addr);
+            addr.sin6_flowinfo = 0;
+            addr.sin6_scope_id = 0;
+            return addr;
         }
     };
 
