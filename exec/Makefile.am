@@ -1,4 +1,6 @@
 AM_CXXFLAGS = @__CHXNET_EXEC_CXXFLAGS@
-bin_PROGRAMS = chxnet_exec
-chxnet_exec_SOURCES = main.cpp
-chxnet_exec_LDADD = @__CHXNET_EXEC_LDADD@
+bin_PROGRAMS = chxnet_echo chxnet_udp
+chxnet_echo_SOURCES = echo.cpp
+chxnet_echo_LDADD = @__CHXNET_EXEC_LDADD@
+chxnet_udp_SOURCES = udp.cpp
+chxnet_udp_LDADD = @__CHXNET_EXEC_LDADD@

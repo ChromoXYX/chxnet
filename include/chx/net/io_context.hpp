@@ -311,24 +311,31 @@ class io_context : CHXNET_NONCOPYABLE {
                 if (cqe->user_data) {
                     auto* task =
                         static_cast<__task_t*>(io_uring_cqe_get_data(cqe));
-                    task->__M_res = cqe->res;
-                    if (cqe->res < 0) {
-                        detail::assign_ec(task->__M_ec, -cqe->res);
-                    } else {
-                        task->__M_ec.clear();
-                    }
 
-                    bool _need_release = !task->__M_persist;
-                    try {
-                        task->__M_token(task);
-                    } catch (...) {
+                    // if this cqe is not notif
+                    // res of notif is zero
+                    if ((cqe->flags & IORING_CQE_F_NOTIF) == 0) {
+                        task->__M_res = cqe->res;
+                        if (cqe->res < 0) {
+                            detail::assign_ec(task->__M_ec, -cqe->res);
+                        } else {
+                            task->__M_ec.clear();
+                        }
+                    }
+                    // if there is no more cqe
+                    if ((cqe->flags & IORING_CQE_F_MORE) == 0) {
+                        bool _need_release = !task->__M_persist;
+                        try {
+                            task->__M_token(task);
+                        } catch (...) {
+                            if (_need_release) {
+                                release(task);
+                            }
+                            std::rethrow_exception(std::current_exception());
+                        }
                         if (_need_release) {
                             release(task);
                         }
-                        std::rethrow_exception(std::current_exception());
-                    }
-                    if (_need_release) {
-                        release(task);
                     }
                 }
                 if (is_stopped()) {

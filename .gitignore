@@ -83,7 +83,8 @@ Makefile
 *.exe
 *.out
 *.app
-exec/chxnet_exec
+exec/chxnet_udp
+exec/chxnet_echo
 
 # VS Code & others
 .cache/

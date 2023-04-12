@@ -2,13 +2,21 @@
 
 An async network I/O library, imitates boost.asio, based on io_uring and liburing, for educational purpose. Now support basic tcp I/O and C++20 coroutine.
 
+[TCP echo server with end-of-line marker](https://github.com/ChromoXYX/chxnet/blob/main/exec/echo.cpp)
+
+[UDP example](https://github.com/ChromoXYX/chxnet/blob/main/exec/udp.cpp)
+
 ***Note:***
 
 ***Only gcc is supported, and the minimum version requirement is 12.1.***
 
-***Full functionality requires a minimum kernel version of 5.19.***
+***Full functionality requires a minimum kernel version 6.0. But most basic operations are available on older kernels.***
 
-[Example (echo server with end-of-line marker)](https://github.com/ChromoXYX/chxnet/blob/main/exec/main.cpp)
+Functionalities or operations that require a kernel version higher than 5.15:
+
+- Cancellation of a single async task, 5.19.
+
+- UDP sendto, 6.0.
 
 ## Dependency
 

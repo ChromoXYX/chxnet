@@ -73,10 +73,10 @@ AC_ARG_WITH([liburing],
 #     ])
 # ])
 
-: ${CXXFLAGS="-O3"}
+: ${CXXFLAGS="-O0 -g"}
 AC_PROG_CXX
-dnl AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
-AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])
+AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
+dnl AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])
 AC_CONFIG_FILES([
     Makefile
     include/Makefile
