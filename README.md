@@ -14,7 +14,7 @@ An async network I/O library, imitates boost.asio, based on io_uring and liburin
 
 Functionalities or operations that require a kernel version higher than 5.15:
 
-- Cancellation of a single async task, 5.19.
+- Cancellation of an async object, 5.19. (If not satisfied, destructor of async objects cannot cancel async tasks associated with itself, leads to bad memory access. To avoid this, use a reference-counter such as shared_ptr.)
 
 - UDP sendto, 6.0.
 
@@ -42,7 +42,7 @@ make
 
 2. Async Operation layer (level-2, `detail::async_operation`)
 
-    All basic I/O operations are implemented in level-2, e.g. `async_read` and `asynd_write`.
+    All basic I/O operations are implemented in level-2, e.g. `async_read` and `async_write`.
 
 3. Userland layer (level-3, I/O objects, `async_combine`)
   
