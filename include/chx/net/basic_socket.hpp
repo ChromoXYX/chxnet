@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 
 #include "./io_context.hpp"
+#include "./detail/version_compare.hpp"
 
 namespace chx::net::detail::tags {
 struct cancel_fd {};
@@ -11,6 +12,7 @@ struct cancel_fd {};
 template <>
 struct chx::net::detail::async_operation<::chx::net::detail::tags::cancel_fd> {
     void operator()(io_context* ctx, int fd) const {
+#if CHXNET_KERNEL_VERSION_GREATER(5, 19) || CHXNET_KERNEL_VERSION_EQUAL(5, 19)
         if (!ctx->is_closed()) {
             auto* sqe = ctx->get_sqe();
             io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_ALL);
@@ -18,6 +20,7 @@ struct chx::net::detail::async_operation<::chx::net::detail::tags::cancel_fd> {
             sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
             ctx->submit();
         }
+#endif
     }
 };
 
@@ -39,7 +42,7 @@ template <typename Protocol> class basic_socket {
     ~basic_socket() {
         if (is_open()) {
             std::error_code ec;
-            cancel();
+            // cancel();
             close(ec);
         }
     }
