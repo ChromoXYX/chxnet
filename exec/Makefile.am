@@ -1,5 +1,12 @@
 AM_CXXFLAGS = @__CHXNET_EXEC_CXXFLAGS@
 bin_PROGRAMS = chxnet_echo chxnet_udp chxnet_ktimer
+
+if CHXNET_WITH_LLHTTP
+bin_PROGRAMS += chxnet_http
+chxnet_http_LDADD = @__CHXNET_EXEC_LDADD@
+chxnet_http_SOURCES = http.cpp
+endif
+
 chxnet_echo_SOURCES = echo.cpp
 chxnet_echo_LDADD = @__CHXNET_EXEC_LDADD@
 chxnet_udp_SOURCES = udp.cpp

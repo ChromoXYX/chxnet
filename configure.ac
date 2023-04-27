@@ -42,38 +42,51 @@ AC_ARG_WITH([liburing],
     ])
 ]
 )
-# AC_ARG_WITH([llhttp],
-#     AS_HELP_STRING([--with-llhttp=<llhttp-DIR>],
-#         [use llhttp located in <llhttp-DIR>]),
-# [
-#     AC_MSG_CHECKING([for include/llhttp.h in $withval])
-#     AS_IF([test -f "$withval/include/llhttp.h"], [
-#         AC_MSG_RESULT([yes])
-#         __CHXNET_EXEC_CXXFLAGS="$__CHXNET_EXEC_CXXFLAGS -I$withval/include"
-#         AC_MSG_CHECKING([for lib/libllhttp.a in $withval])
-#         AS_IF([test -f "$withval/lib/libllhttp.a"], [
-#             AC_MSG_RESULT([yes])
-#             __CHXNET_EXEC_LDADD="$__CHXNET_EXEC_LDADD $withval/lib/libllhttp.a"
-#         ], [
-#             AC_MSG_RESULT([no])
-#             AC_MSG_ERROR([cannot find lib/libllhttp.a in $withval])
-#         ])
-#     ], [
-#         AC_MSG_RESULT([no])
-#         AC_MSG_ERROR([cannot find include/llhttp.a in $withva])
-#     ])
-# ], [
-#     AC_CHECK_HEADER([llhttp.h], [], [
-#         AC_MSG_ERROR([cannot find llhttp.h in system include dirs])
-#     ])
-#     AC_CHECK_LIB([llhttp], [llhttp_init], [
-#         __CHXNET_EXEC_LDADD="$__CHXNET_EXEC_LDADD -lllhttp"
-#     ], [
-#         AC_MSG_ERROR([cannot link against llhttp, -lllhttp failed])
-#     ])
-# ])
+AC_ARG_WITH([llhttp],
+    AS_HELP_STRING([--with-llhttp=<llhttp-DIR>],
+        [use llhttp located in <llhttp-DIR>]),
+[
+    AS_IF([test "x$withval" == xyes], [
+        AC_CHECK_HEADER([llhttp.h], [], [
+            AC_MSG_ERROR([cannot find llhttp.h in system include dirs])
+        ])
+        AC_CHECK_LIB([llhttp], [llhttp_init], [
+            __CHXNET_EXEC_LDADD="$__CHXNET_EXEC_LDADD -lllhttp"
+        ], [
+            AC_MSG_ERROR([cannot link against llhttp, -lllhttp failed])
+        ])
+    ], [
+        AC_MSG_CHECKING([for include/llhttp.h in $withval])
+        AS_IF([test -f "$withval/include/llhttp.h"], [
+            AC_MSG_RESULT([yes])
+            __CHXNET_EXEC_CXXFLAGS="$__CHXNET_EXEC_CXXFLAGS -I$withval/include"
+            AC_MSG_CHECKING([for lib/libllhttp.a in $withval])
+            AS_IF([test -f "$withval/lib/libllhttp.a"], [
+                AC_MSG_RESULT([yes])
+                __CHXNET_EXEC_LDADD="$__CHXNET_EXEC_LDADD $withval/lib/libllhttp.a"
+            ], [
+                AC_MSG_RESULT([no])
+                AC_MSG_ERROR([cannot find lib/libllhttp.a in $withval])
+            ])
+        ], [
+            AC_MSG_RESULT([no])
+            AC_MSG_ERROR([cannot find include/llhttp.a in $withva])
+        ])
+    ])
+    AC_SUBST(__CHXNET_WITH_LLHTTP, 1)
+], [
+    # AC_CHECK_HEADER([llhttp.h], [], [
+    #     AC_MSG_ERROR([cannot find llhttp.h in system include dirs])
+    # ])
+    # AC_CHECK_LIB([llhttp], [llhttp_init], [
+    #     __CHXNET_EXEC_LDADD="$__CHXNET_EXEC_LDADD -lllhttp"
+    # ], [
+    #     AC_MSG_ERROR([cannot link against llhttp, -lllhttp failed])
+    # ])
+])
+AM_CONDITIONAL([CHXNET_WITH_LLHTTP], [test "x$__CHXNET_WITH_LLHTTP" == x1])
 
-: ${CXXFLAGS="-O0 -g"}
+: ${CXXFLAGS="-O3"}
 AC_PROG_CXX
 AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
 dnl AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])
