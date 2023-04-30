@@ -16,7 +16,7 @@
 #include "./net/buffer.hpp"
 #include "./net/buffer_sequence.hpp"
 #include "./net/cancellation.hpp"
-#include "./net/coroutine.hpp"
+#include "./net/coroutine2.hpp"
 #include "./net/dynamic_buffer.hpp"
 #include "./net/io_context.hpp"
 #include "./net/ip.hpp"

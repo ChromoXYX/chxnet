@@ -88,8 +88,8 @@ AM_CONDITIONAL([CHXNET_WITH_LLHTTP], [test "x$__CHXNET_WITH_LLHTTP" == x1])
 
 : ${CXXFLAGS="-O3"}
 AC_PROG_CXX
-AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
-dnl AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])
+dnl AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
+AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])
 AC_CONFIG_FILES([
     Makefile
     include/Makefile
