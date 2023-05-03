@@ -114,14 +114,11 @@ auto chx::net::detail::
     async_operation<chx::net::ip::detail::tags::async_accept>::operator()(
         io_context* ctx, ip::tcp::acceptor* acceptor,
         CompletionToken&& completion_token) -> decltype(auto) {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        auto* sqe = ctx->get_sqe();
-        io_uring_sqe_set_data(sqe, task);
-        io_uring_prep_accept(sqe, acceptor->native_handler(), nullptr, nullptr,
-                             0);
-    }
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe();
+    io_uring_sqe_set_data(sqe, task);
+    io_uring_prep_accept(sqe, acceptor->native_handler(), nullptr, nullptr, 0);
+
     task->__M_additional = reinterpret_cast<std::uint64_t>(acceptor);
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(

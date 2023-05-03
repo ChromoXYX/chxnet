@@ -165,33 +165,30 @@ auto chx::net::detail::async_operation<chx::net::ip::detail::tags::writev>::
 operator()(io_context* ctx, Socket* sock,
            ConstBufferSequence&& const_buffer_sequence,
            CompletionToken&& completion_token) -> decltype(auto) {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        using __type = is_const_buffer_sequence<
-            std::remove_reference_t<ConstBufferSequence>>;
-        io_uring_sqe* sqe = nullptr;
-        if constexpr (__type::has_static_size) {
-            const auto iovec_arr = generate_iovec_array_const(
-                const_buffer_sequence,
-                std::make_integer_sequence<std::size_t, __type::static_size>());
-            sqe = ctx->get_sqe(task);
-            io_uring_prep_writev(sqe, sock->native_handler(), iovec_arr.data(),
-                                 iovec_arr.size(), 0);
-            ctx->submit();
+    io_context::task_t* task = ctx->acquire();
+    using __type =
+        is_const_buffer_sequence<std::remove_reference_t<ConstBufferSequence>>;
+    io_uring_sqe* sqe = nullptr;
+    if constexpr (__type::has_static_size) {
+        const auto iovec_arr = generate_iovec_array_const(
+            const_buffer_sequence,
+            std::make_integer_sequence<std::size_t, __type::static_size>());
+        sqe = ctx->get_sqe(task);
+        io_uring_prep_writev(sqe, sock->native_handler(), iovec_arr.data(),
+                             iovec_arr.size(), 0);
+        ctx->submit();
 
-        } else {
-            std::vector<struct iovec> iovec_vec(std::distance(
-                const_buffer_sequence.begin(), const_buffer_sequence.end()));
-            auto iterator = iovec_vec.begin();
-            for (const auto& i : const_buffer_sequence) {
-                *(iterator++) = detail::to_iovec_const(const_buffer(i));
-            }
-            sqe = ctx->get_sqe(task);
-            io_uring_prep_writev(sqe, sock->native_handler(), iovec_vec.data(),
-                                 iovec_vec.size(), 0);
-            ctx->submit();
+    } else {
+        std::vector<struct iovec> iovec_vec(std::distance(
+            const_buffer_sequence.begin(), const_buffer_sequence.end()));
+        auto iterator = iovec_vec.begin();
+        for (const auto& i : const_buffer_sequence) {
+            *(iterator++) = detail::to_iovec_const(const_buffer(i));
         }
+        sqe = ctx->get_sqe(task);
+        io_uring_prep_writev(sqe, sock->native_handler(), iovec_vec.data(),
+                             iovec_vec.size(), 0);
+        ctx->submit();
     }
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(
@@ -211,13 +208,10 @@ auto chx::net::detail::
     async_operation<chx::net::ip::detail::tags::simple_write>::operator()(
         io_context* ctx, Socket* sock, const const_buffer& buf,
         CompletionToken&& completion_token) -> decltype(auto) {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        auto* sqe = ctx->get_sqe(task);
-        io_uring_prep_write(sqe, sock->native_handler(), buf.data(), buf.size(),
-                            0);
-    }
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe(task);
+    io_uring_prep_write(sqe, sock->native_handler(), buf.data(), buf.size(), 0);
+
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(
             task,
@@ -236,13 +230,11 @@ auto chx::net::detail::
     async_operation<chx::net::ip::detail::tags::simple_read>::operator()(
         io_context* ctx, Socket* sock, const mutable_buffer& buffer,
         CompletionToken&& completion_token) -> decltype(auto) {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        auto* sqe = ctx->get_sqe(task);
-        io_uring_prep_read(sqe, sock->native_handler(), buffer.data(),
-                           buffer.size(), 0);
-    }
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe(task);
+    io_uring_prep_read(sqe, sock->native_handler(), buffer.data(),
+                       buffer.size(), 0);
+
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(
             task,
@@ -265,34 +257,31 @@ auto chx::net::detail::async_operation<chx::net::ip::detail::tags::readv>::
 operator()(io_context* ctx, Socket* sock,
            MutableBufferSequence&& mutable_buffer_sequence,
            CompletionToken&& completion_token) -> decltype(auto) {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        using __type = is_mutable_buffer_sequence<
-            std::remove_reference_t<MutableBufferSequence>>;
-        io_uring_sqe* sqe = nullptr;
-        if constexpr (__type::has_static_size) {
-            auto iovec_arr = generate_iovec_array_mutable(
-                mutable_buffer_sequence,
-                std::make_integer_sequence<std::size_t, __type::static_size>());
-            sqe = ctx->get_sqe(task);
-            io_uring_prep_readv(sqe, sock->native_handler(), iovec_arr.data(),
-                                iovec_arr.size(), 0);
-            ctx->submit();
-        } else {
-            std::vector<struct iovec> iovec_vec(
-                std::distance(mutable_buffer_sequence.begin(),
-                              mutable_buffer_sequence.end()));
-            auto iterator = iovec_vec.begin();
-            for (auto& i : mutable_buffer_sequence) {
-                *(iterator++) = detail::to_iovec_mutable(mutable_buffer(i));
-            }
-            sqe = ctx->get_sqe(task);
-            io_uring_prep_readv(sqe, sock->native_handler(), iovec_vec.data(),
-                                iovec_vec.size(), 0);
-            ctx->submit();
+    io_context::task_t* task = ctx->acquire();
+    using __type = is_mutable_buffer_sequence<
+        std::remove_reference_t<MutableBufferSequence>>;
+    io_uring_sqe* sqe = nullptr;
+    if constexpr (__type::has_static_size) {
+        auto iovec_arr = generate_iovec_array_mutable(
+            mutable_buffer_sequence,
+            std::make_integer_sequence<std::size_t, __type::static_size>());
+        sqe = ctx->get_sqe(task);
+        io_uring_prep_readv(sqe, sock->native_handler(), iovec_arr.data(),
+                            iovec_arr.size(), 0);
+        ctx->submit();
+    } else {
+        std::vector<struct iovec> iovec_vec(std::distance(
+            mutable_buffer_sequence.begin(), mutable_buffer_sequence.end()));
+        auto iterator = iovec_vec.begin();
+        for (auto& i : mutable_buffer_sequence) {
+            *(iterator++) = detail::to_iovec_mutable(mutable_buffer(i));
         }
+        sqe = ctx->get_sqe(task);
+        io_uring_prep_readv(sqe, sock->native_handler(), iovec_vec.data(),
+                            iovec_vec.size(), 0);
+        ctx->submit();
     }
+
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(
             task,
@@ -326,22 +315,20 @@ decltype(auto)
 chx::net::detail::async_operation<chx::net::ip::detail::tags::connect>::
 operator()(io_context* ctx, Socket* sock, const Endpoint& ep,
            CompletionToken&& completion_token) {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        auto* sqe = ctx->get_sqe(task);
-        if (ep.address().is_v4()) {
-            auto addr = ep.sockaddr_in();
-            io_uring_prep_connect(sqe, sock->native_handler(),
-                                  (struct sockaddr*)&addr, sizeof(addr));
-            ctx->submit();
-        } else {
-            auto addr = ep.sockaddr_in6();
-            io_uring_prep_connect(sqe, sock->native_handler(),
-                                  (struct sockaddr*)&addr, sizeof(addr));
-            ctx->submit();
-        }
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe(task);
+    if (ep.address().is_v4()) {
+        auto addr = ep.sockaddr_in();
+        io_uring_prep_connect(sqe, sock->native_handler(),
+                              (struct sockaddr*)&addr, sizeof(addr));
+        ctx->submit();
+    } else {
+        auto addr = ep.sockaddr_in6();
+        io_uring_prep_connect(sqe, sock->native_handler(),
+                              (struct sockaddr*)&addr, sizeof(addr));
+        ctx->submit();
     }
+
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(
             task,

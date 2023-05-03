@@ -17,13 +17,11 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::ktimer> {
 
     void cancel(io_context* ctx, int fd) const {
 #if CHXNET_KERNEL_VERSION_GREATER(5, 19) || CHXNET_KERNEL_VERSION_EQUAL(5, 19)
-        if (!ctx->is_closed()) {
-            auto* sqe = ctx->get_sqe();
-            io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_ALL);
-            io_uring_sqe_set_data(sqe, nullptr);
-            sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
-            ctx->submit();
-        }
+        auto* sqe = ctx->get_sqe();
+        io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_ALL);
+        io_uring_sqe_set_data(sqe, nullptr);
+        sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
+        ctx->submit();
 #endif
     }
 };
@@ -106,12 +104,10 @@ template <typename CompletionToken>
 decltype(auto)
 chx::net::detail::async_operation<chx::net::detail::tags::ktimer>::operator()(
     io_context* ctx, int fd, CompletionToken&& completion_token) const {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        auto* sqe = ctx->get_sqe(task);
-        io_uring_prep_read(sqe, fd, &task->__M_additional, 8, 0);
-    }
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe(task);
+    io_uring_prep_read(sqe, fd, &task->__M_additional, 8, 0);
+
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(
             task,

@@ -1,21 +1,27 @@
 #include <iostream>
 #include "../include/chx/net.hpp"
+#include "../include/chx/net/detached.hpp"
 
 namespace net = chx::net;
 
 net::task<> test() {
-    // when using chx/net/coroutine.hpp, this will lead to crash.
-    auto await1 = (co_await net::this_context).async_nop(net::use_coro);
-    net::ip::tcp::acceptor acceptor(
+    // when using chx/net/coroutine.hpp, this coro will lead to crash.
+    net::ip::tcp::acceptor acceptor1(
         co_await net::this_context,
         net::ip::tcp::endpoint(net::ip::tcp::v4(), 10086));
-
-    auto sock = co_await acceptor.async_accept(net::use_coro);
-    co_return;
+    net::ip::tcp::acceptor acceptor2(
+        co_await net::this_context,
+        net::ip::tcp::endpoint(net::ip::tcp::v4(), 10087));
+    auto a1 = acceptor1.async_accept(net::use_coro);
+    auto a2 = acceptor2.async_accept(net::as_tuple(net::use_coro));
+    acceptor2.close();
+    auto r = co_await (a1 || a2)();
+    std::cout << r.ec.message() << "\n";
+    std::cout << std::get<0>(std::get<2>(r.value)).message() << "\n";
 }
 
 int main(void) {
     net::io_context ctx;
-    co_spawn(ctx, test());
+    co_spawn(ctx, test(), net::detached);
     ctx.run();
 }

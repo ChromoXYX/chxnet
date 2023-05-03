@@ -141,8 +141,7 @@ template <> struct async_operation<tags::combine> {
     template <typename Operation, typename CompletionToken>
     decltype(auto) operator()(io_context& ctx, Operation&& operation,
                               CompletionToken&& completion_token) {
-        io_context::task_t* task =
-            ctx.is_closed() ? ctx.acquire_after_close() : ctx.acquire();
+        io_context::task_t* task = ctx.acquire();
 
         task->__M_persist = true;
         task->__M_cancel_invoke = true;

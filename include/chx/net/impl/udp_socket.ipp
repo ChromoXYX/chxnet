@@ -134,25 +134,20 @@ decltype(auto)
 chx::net::detail::async_operation<chx::net::ip::detail::tags::udp_sendto>::
 operator()(io_context* ctx, ip::udp::socket* sock, const const_buffer& buffer,
            const ip::udp::endpoint& ep, CompletionToken&& completion_token) {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        auto* sqe = ctx->get_sqe(task);
-        if (ep.address().is_v4()) {
-            auto addr = ep.sockaddr_in();
-            io_uring_prep_send_zc(sqe, sock->native_handler(), buffer.data(),
-                                  buffer.size(), 0, 0);
-            io_uring_prep_send_set_addr(sqe, (struct sockaddr*)&addr,
-                                        sizeof(addr));
-            ctx->submit();
-        } else {
-            auto addr = ep.sockaddr_in6();
-            io_uring_prep_send_zc(sqe, sock->native_handler(), buffer.data(),
-                                  buffer.size(), 0, 0);
-            io_uring_prep_send_set_addr(sqe, (struct sockaddr*)&addr,
-                                        sizeof(addr));
-            ctx->submit();
-        }
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe(task);
+    if (ep.address().is_v4()) {
+        auto addr = ep.sockaddr_in();
+        io_uring_prep_send_zc(sqe, sock->native_handler(), buffer.data(),
+                              buffer.size(), 0, 0);
+        io_uring_prep_send_set_addr(sqe, (struct sockaddr*)&addr, sizeof(addr));
+        ctx->submit();
+    } else {
+        auto addr = ep.sockaddr_in6();
+        io_uring_prep_send_zc(sqe, sock->native_handler(), buffer.data(),
+                              buffer.size(), 0, 0);
+        io_uring_prep_send_set_addr(sqe, (struct sockaddr*)&addr, sizeof(addr));
+        ctx->submit();
     }
 
     return detail::async_token_init(

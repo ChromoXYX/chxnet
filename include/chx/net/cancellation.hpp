@@ -8,40 +8,87 @@ struct outer_cancel {};
 
 template <>
 struct chx::net::detail::async_operation<chx::net::detail::tags::outer_cancel> {
-    void cancel(io_context* ctx, io_context::task_t* task) const {
-        if (!task->__M_cancel_invoke) {
-            ctx->cancel_task(task);
-        } else {
-            task->__M_token(task);
-        }
+    void normal_cancel(io_context* ctx, io_context::task_t* task) const {
+        ctx->cancel_task(task);
+    }
+    void invoke_cancel(io_context* ctx, io_context::task_t* task) const {
+        task->__M_token(task);
+    }
+    constexpr bool get_cancel_type(io_context::task_t* t) const noexcept(true) {
+        return t->__M_cancel_invoke;
     }
 };
 
 namespace chx::net {
 namespace detail {
 template <typename BindCompletionToken> struct cancellation_ops;
-}
-struct cancellation_signal {
+struct cancellation_assign;
+
+struct cancellation_base {
+    virtual void operator()() = 0;
+    virtual ~cancellation_base() = default;
+};
+}  // namespace detail
+struct cancellation_signal : CHXNET_NONCOPYABLE {
     template <typename BindCompletionToken>
     friend struct detail::cancellation_ops;
+    friend struct detail::cancellation_assign;
+
+    cancellation_signal() = default;
+    cancellation_signal(cancellation_signal&&) = default;
 
     void emit() {
-        if (__M_task) {
-            detail::async_operation<detail::tags::outer_cancel>().cancel(
-                &__M_task->get_associated_io_context(), __M_task);
+        if (__M_op) {
+            (*__M_op)();
         }
     }
 
-    constexpr void clear() noexcept(true) { __M_task = nullptr; }
+    void clear() noexcept(true) { __M_op.reset(); }
 
   private:
-    constexpr void assign(io_context::task_t* task) noexcept(true) {
-        __M_task = task;
+    void assign(io_context::task_t* task) noexcept(true) {
+        struct ops : detail::cancellation_base {
+            io_context::task_t* t;
+            ops(io_context::task_t* task) noexcept(true) : t(task) {}
+
+            void operator()() override {
+                detail::async_operation<detail::tags::outer_cancel>()
+                    .normal_cancel(&t->get_associated_io_context(), t);
+            }
+        };
+        struct ops2 : detail::cancellation_base {
+            io_context::task_t* t;
+            ops2(io_context::task_t* task) noexcept(true) : t(task) {}
+            void operator()() override {
+                detail::async_operation<detail::tags::outer_cancel>()
+                    .invoke_cancel(&t->get_associated_io_context(), t);
+            }
+        };
+        if (!detail::async_operation<detail::tags::outer_cancel>()
+                 .get_cancel_type(task)) {
+            __M_op.reset(new ops(task));
+        } else {
+            __M_op.reset(new ops2(task));
+        }
     }
-    io_context::task_t* __M_task = nullptr;
+    void emplace(detail::cancellation_base* base) noexcept(true) {
+        __M_op.reset(base);
+    }
+    std::unique_ptr<detail::cancellation_base> __M_op;
 };
 
 namespace detail {
+struct cancellation_assign {
+    void operator()(io_context::task_t* t,
+                    cancellation_signal& s) noexcept(true) {
+        s.assign(t);
+    }
+    void emplace(cancellation_base* base,
+                 cancellation_signal& s) noexcept(true) {
+        s.emplace(base);
+    }
+};
+
 template <typename BindCompletionToken> struct cancellation_ops {
     using attribute_type = attribute<async_token>;
 

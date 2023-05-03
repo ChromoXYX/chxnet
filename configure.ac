@@ -86,7 +86,7 @@ AC_ARG_WITH([llhttp],
 ])
 AM_CONDITIONAL([CHXNET_WITH_LLHTTP], [test "x$__CHXNET_WITH_LLHTTP" == x1])
 
-: ${CXXFLAGS="-O3"}
+: ${CXXFLAGS="-O0 -g"}
 AC_PROG_CXX
 dnl AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
 AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])

@@ -37,14 +37,13 @@ class io_context : CHXNET_NONCOPYABLE {
 
   public:
     io_uring __M_ring;
-    bool __M_closed = false;
     bool __M_stopped = false;
 
     struct __task_t : CHXNET_NONCOPYABLE {
         friend class io_context;
         template <typename Tag> friend struct detail::async_operation;
 
-      protected:
+      public:
         __task_t(io_context* p) noexcept(true) : __M_ctx(p) {}
 
         io_context* __M_ctx = nullptr;
@@ -71,6 +70,7 @@ class io_context : CHXNET_NONCOPYABLE {
         void reset() noexcept(true) {
             __M_token.clear();
             __M_ec.clear();
+            __M_res = 0;
             __M_persist = false;
             __M_releasable = true;
             __M_cancel_invoke = false;
@@ -92,65 +92,6 @@ class io_context : CHXNET_NONCOPYABLE {
     std::vector<std::unique_ptr<__task_t>> __M_dynamic_task_queue;
     std::size_t __M_dyn_total = 0;
     std::size_t __M_dyn_end = 0;
-
-    struct __closed_task_t : __task_t {
-        __closed_task_t(io_context* ctx) noexcept(true) : __task_t(ctx) {
-            __M_releasable = false;
-        }
-
-        __closed_task_t* next = nullptr;
-
-        void exec() {
-            __M_res = -ECANCELED;
-            detail::assign_ec(__M_ec, ECANCELED);
-            __M_token(this);
-        }
-    };
-    struct linked_list : CHXNET_NONCOPYABLE {
-        io_context* ctx;
-        constexpr linked_list(io_context* p) noexcept(true) : ctx(p) {}
-
-        ~linked_list() { clear(); }
-
-        __closed_task_t *head = nullptr, *tail = nullptr;
-
-        __task_t* acquire() {
-            if (tail) {
-                tail->next = new __closed_task_t(ctx);
-                tail = tail->next;
-            } else {
-                head = new __closed_task_t(ctx);
-                tail = head;
-            }
-            return tail;
-        }
-
-        void clear_once() {
-            if (tail) {
-                __closed_task_t *r = nullptr, *old_tail = tail;
-                while (head != old_tail) {
-                    r = head;
-                    r->exec();
-                    head = r->next;
-                    delete r;
-                }
-                r = old_tail;
-                r->exec();
-                head = r->next;
-                delete r;
-
-                if (tail == old_tail) {
-                    tail = head;
-                }
-            }
-        }
-
-        void clear() {
-            while (head) {
-                clear_once();
-            }
-        }
-    } __M_task_after_close;
 
     static_assert(
         std::is_nothrow_destructible_v<__task_t> &&
@@ -210,8 +151,6 @@ class io_context : CHXNET_NONCOPYABLE {
         throw bad_io_context_exec("io_context task queue internal error");
     }
 
-    __task_t* acquire_after_close() { return __M_task_after_close.acquire(); }
-
     void submit() {
         if (int r = io_uring_submit(&__M_ring); r >= 0) {
             return;
@@ -251,7 +190,6 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     [[nodiscard]] io_uring_sqe* get_sqe(__task_t* task = nullptr) {
-        assert(!is_closed());
         auto* sqe = io_uring_get_sqe(&__M_ring);
         if (sqe) {
             io_uring_sqe_set_data(sqe, task);
@@ -365,7 +303,7 @@ class io_context : CHXNET_NONCOPYABLE {
      *
      */
     io_context(std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(__task_t))
-        : __M_static_task_sz(static_task_sz), __M_task_after_close(this) {
+        : __M_static_task_sz(static_task_sz) {
         struct io_uring_params params = {};
 #if CHXNET_ENABLE_SQPOLL
         if (getuid() == 0) {
@@ -399,13 +337,10 @@ class io_context : CHXNET_NONCOPYABLE {
      */
     ~io_context() {
         try {
-            if (!is_closed() &&
-                (__M_static_total || !__M_dynamic_task_queue.empty())) {
+            if ((__M_static_total || !__M_dynamic_task_queue.empty())) {
                 __async_cancel_all();
-                close();
                 __run();
             }
-            __M_task_after_close.clear();
         } catch (...) {
             io_uring_queue_exit(&__M_ring);
             std::destroy(__M_static_task_queue,
@@ -418,14 +353,6 @@ class io_context : CHXNET_NONCOPYABLE {
                      __M_static_task_queue + __M_static_task_sz);
         ::free(__M_static_task_queue);
     }
-
-    /**
-     * @brief Check whether the io_context is closed.
-     *
-     * @return true The io_context is not closed.
-     * @return false The io_context is closed.
-     */
-    constexpr bool is_closed() const noexcept(true) { return __M_closed; }
     /**
      * @brief Start waiting for async tasks to be completed.
      *
@@ -434,15 +361,6 @@ class io_context : CHXNET_NONCOPYABLE {
      *
      */
     void run() { __run(); }
-    /**
-     * @brief Close the io_context.
-     *
-     * @details If an io_context is closed, it will never be opened again. Any
-     * async task submitted will not be processed, and will be completed with
-     * operation_canceled error code.
-     *
-     */
-    constexpr void close() noexcept(true) { __M_closed = true; }
 
     /**
      * @brief Stop handling the completion of async tasks;

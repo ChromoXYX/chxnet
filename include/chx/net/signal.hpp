@@ -23,13 +23,11 @@ struct signal_failed {};
 
 template <> struct async_operation<tags::signal_cancel> {
     void operator()(io_context* ctx, int fd) const {
-        if (!ctx->is_closed()) {
 #if CHXNET_KERNEL_VERSION_GREATER(5, 19) || CHXNET_KERNEL_VERSION_EQUAL(5, 19)
-            auto* sqe = ctx->get_sqe();
-            io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_ALL);
-            sqe->flags = IOSQE_CQE_SKIP_SUCCESS;
+        auto* sqe = ctx->get_sqe();
+        io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_ALL);
+        sqe->flags = IOSQE_CQE_SKIP_SUCCESS;
 #endif
-        }
     }
 };
 
@@ -307,12 +305,9 @@ template <typename CompletionToken>
 decltype(auto)
 chx::net::detail::async_operation<chx::net::detail::tags::signal_wait>::
 operator()(io_context* ctx, signal* sig, CompletionToken&& completion_token) {
-    io_context::task_t* task =
-        ctx->is_closed() ? ctx->acquire_after_close() : ctx->acquire();
-    if (!ctx->is_closed()) {
-        auto* sqe = ctx->get_sqe(task);
-        io_uring_prep_poll_add(sqe, sig->__M_sigfd, POLLIN);
-    }
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe(task);
+    io_uring_prep_poll_add(sqe, sig->__M_sigfd, POLLIN);
 
     task->__M_additional = reinterpret_cast<std::uint64_t>(sig);
     sig->__M_keep = true;

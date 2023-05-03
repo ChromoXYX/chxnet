@@ -320,12 +320,10 @@ decltype(auto)
 chx::net::detail::async_operation<chx::net::ip::detail::tags::tcp_splice>::
 operator()(io_context* ctx, ip::tcp::socket* sock, int fd_in, int fd_out,
            std::size_t len, CompletionToken&& completion_token) {
-    io_context::task_t* task =
-        !ctx->is_closed() ? ctx->acquire() : ctx->acquire_after_close();
-    if (!ctx->is_closed()) {
-        auto* sqe = ctx->get_sqe(task);
-        io_uring_prep_splice(sqe, fd_in, -1, fd_out, -1, len, 0);
-    }
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe(task);
+    io_uring_prep_splice(sqe, fd_in, -1, fd_out, -1, len, 0);
+
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(
             task,

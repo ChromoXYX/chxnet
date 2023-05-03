@@ -13,13 +13,11 @@ template <>
 struct chx::net::detail::async_operation<::chx::net::detail::tags::cancel_fd> {
     void operator()(io_context* ctx, int fd) const {
 #if CHXNET_KERNEL_VERSION_GREATER(5, 19) || CHXNET_KERNEL_VERSION_EQUAL(5, 19)
-        if (!ctx->is_closed()) {
-            auto* sqe = ctx->get_sqe();
-            io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_ALL);
-            io_uring_sqe_set_data(sqe, nullptr);
-            sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
-            ctx->submit();
-        }
+        auto* sqe = ctx->get_sqe();
+        io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_ALL);
+        io_uring_sqe_set_data(sqe, nullptr);
+        sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
+        ctx->submit();
 #endif
     }
 };

@@ -6,7 +6,7 @@ An async network I/O library, imitates boost.asio, based on io_uring and liburin
 
 [UDP example](https://github.com/ChromoXYX/chxnet/blob/main/exec/udp.cpp)
 
-[Simple http server, which always responses with headers of requests](https://github.com/ChromoXYX/chxnet/blob/main/exec/ktimer.cpp)
+[Simple http server, which always responses with headers of requests](https://github.com/ChromoXYX/chxnet/blob/main/exec/http.cpp)
 
 ***Note:***
 
