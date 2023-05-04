@@ -15,9 +15,12 @@ net::task<> test() {
     auto a1 = acceptor1.async_accept(net::use_coro);
     auto a2 = acceptor2.async_accept(net::as_tuple(net::use_coro));
     acceptor2.close();
-    auto r = co_await (a1 || a2)();
-    std::cout << r.ec.message() << "\n";
-    std::cout << std::get<0>(std::get<2>(r.value)).message() << "\n";
+    auto [ec, val] = co_await (a1 || a2);
+    std::cout << ec.message() << "\n";
+    std::cout << val.index() << "\n";
+    if (val.index() == 2) {
+        std::cout << std::get<0>(std::get<2>(val)).message() << "\n";
+    }
 }
 
 int main(void) {

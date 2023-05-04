@@ -63,6 +63,22 @@ struct this_context_t {
 };
 inline constexpr struct this_context_t this_context = {};
 
+namespace detail {
+template <typename... Ts> struct when_any_operator_impl;
+
+template <typename T> struct is_when_any_operator_impl : std::false_type {};
+template <typename... Ts>
+struct is_when_any_operator_impl<when_any_operator_impl<Ts...>>
+    : std::true_type {};
+
+template <typename WhenAnyOperatorImpl>
+constexpr decltype(auto) when_any_operator_transform(
+    WhenAnyOperatorImpl&& when_any_operator,
+    sfinae_placeholder<std::enable_if_t<
+        is_when_any_operator_impl<std::decay_t<WhenAnyOperatorImpl>>::value>>
+        _ = sfinae);
+}  // namespace detail
+
 namespace detail::coroutine {
 struct this_promise_t {};
 inline constexpr struct this_promise_t this_promise = {};
@@ -154,9 +170,14 @@ template <> class task_impl<void> {
             return this_context_t::awaitable(__M_ctx);
         }
         template <typename Awaitable>
-        constexpr decltype(auto)
-        await_transform(Awaitable&& awaitable) noexcept(true) {
-            return std::forward<Awaitable>(awaitable);
+        constexpr decltype(auto) await_transform(Awaitable&& awaitable) {
+            if constexpr (is_when_any_operator_impl<
+                              std::decay_t<Awaitable>>::value) {
+                return when_any_operator_transform(
+                    std::forward<Awaitable>(awaitable));
+            } else {
+                return std::forward<Awaitable>(awaitable);
+            }
         }
 
         constexpr void return_void() noexcept(true) {}
@@ -435,7 +456,7 @@ template <typename T> struct awaitable_impl : CHXNET_NONCOPYABLE {
     set_cancellation_method(cancellation_base* b) noexcept(true) {
         __M_view->cancel_op.reset(b);
     }
-    cancellation_signal get_cancellation_signal() noexcept(true) {
+    cancellation_signal get_cancellation_signal() {
         cancellation_signal s;
         if (!__M_view->cancel_op) {
             cancellation_assign()(get_associated_task(), s);
@@ -475,8 +496,7 @@ void when_any_apply(std::integer_sequence<std::size_t, Idx...>, Func&& func,
 
 struct when_any_impl {
     template <typename T>
-    constexpr auto get_cancellation_signal(awaitable_impl<T>& awaitable) const
-        noexcept(true) {
+    constexpr auto get_cancellation_signal(awaitable_impl<T>& awaitable) const {
         return awaitable.get_cancellation_signal();
     }
 
@@ -488,8 +508,8 @@ struct when_any_impl {
     }
 
     template <typename... Ts> struct cntl_type {
-        std::variant<std::monostate, Ts...> value;
         std::error_code ec;
+        std::variant<std::monostate, Ts...> value;
     };
 
     template <std::size_t Idx, typename T, typename Tp, typename... Ts>
@@ -770,7 +790,7 @@ template <typename... Ts> struct when_any_operator_impl {
     apply_impl(std::integer_sequence<std::size_t, Idx...>) {
         return when_any(std::get<Idx>(ref_tp)...);
     }
-    constexpr decltype(auto) operator()() {
+    constexpr decltype(auto) get_await() {
         return apply_impl(
             std::make_integer_sequence<std::size_t, sizeof...(Ts)>());
     }
@@ -905,6 +925,15 @@ auto chx::net::detail::coroutine::when_any_impl::poll(
     ret.set_cancellation_method(
         new cancel_method(ts.get_cancellation_signal()...));
     return std::move(ret);
+}
+
+template <typename WhenAnyOperatorImpl>
+constexpr decltype(auto) chx::net::detail::when_any_operator_transform(
+    WhenAnyOperatorImpl&& when_any_operator,
+    sfinae_placeholder<std::enable_if_t<
+        is_when_any_operator_impl<std::decay_t<WhenAnyOperatorImpl>>::value>>
+        _) {
+    return when_any_operator.get_await();
 }
 
 #endif
