@@ -12,13 +12,11 @@ An async network I/O library, imitates boost.asio, based on io_uring and liburin
 
 ***Only gcc is supported, and the minimum version requirement is 12.1.***
 
-***Full functionality requires a minimum kernel version 6.0. But most basic operations are available on older kernels.***
+***Full functionality requires a minimum kernel version 5.19. But most basic operations are available on older kernels.***
 
 Functionalities or operations that require a kernel version higher than 5.15:
 
 - Cancellation of an async object, 5.19. (If not satisfied, destructor of async objects cannot cancel async tasks associated with itself, leads to bad memory access. To avoid this, use a reference-counter such as shared_ptr.)
-
-- UDP sendto, 6.0.
 
 ## Dependency
 

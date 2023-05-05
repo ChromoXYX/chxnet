@@ -2,6 +2,10 @@
 
 #ifdef CHXNET_ENABLE_COROUTINE
 
+#ifndef CHXNET_ENABLE_CORO_WHEN_ANY
+#define CHXNET_ENABLE_CORO_WHEN_ANY 0
+#endif
+
 #include "attribute.hpp"
 
 #include <coroutine>
@@ -15,9 +19,11 @@
 
 namespace chx::net::detail::tags {
 struct coro_cospawn {};
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 struct coro_when_any_cospawn {};
 struct coro_when_any_success_poll {};
 struct coro_when_any_release {};
+#endif
 }  // namespace chx::net::detail::tags
 
 template <>
@@ -27,6 +33,7 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::coro_cospawn> {
                               CompletionToken&& completion_token);
 };
 
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 template <>
 struct chx::net::detail::async_operation<
     chx::net::detail::tags::coro_when_any_cospawn> {
@@ -52,6 +59,7 @@ struct chx::net::detail::async_operation<
         t->get_associated_io_context().release(t);
     }
 };
+#endif
 
 namespace chx::net {
 struct this_context_t {
@@ -63,6 +71,7 @@ struct this_context_t {
 };
 inline constexpr struct this_context_t this_context = {};
 
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 namespace detail {
 template <typename... Ts> struct when_any_operator_impl;
 
@@ -78,12 +87,15 @@ constexpr decltype(auto) when_any_operator_transform(
         is_when_any_operator_impl<std::decay_t<WhenAnyOperatorImpl>>::value>>
         _ = sfinae);
 }  // namespace detail
+#endif
 
 namespace detail::coroutine {
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 struct this_promise_t {};
 inline constexpr struct this_promise_t this_promise = {};
 struct this_task_t {};
 inline constexpr struct this_task_t this_task = {};
+#endif
 
 inline void deliver_exception(io_context* ctx, std::exception_ptr ex) {
     ctx->async_nop(
@@ -171,6 +183,7 @@ template <> class task_impl<void> {
         }
         template <typename Awaitable>
         constexpr decltype(auto) await_transform(Awaitable&& awaitable) {
+#if CHXNET_ENABLE_CORO_WHEN_ANY
             if constexpr (is_when_any_operator_impl<
                               std::decay_t<Awaitable>>::value) {
                 return when_any_operator_transform(
@@ -178,6 +191,9 @@ template <> class task_impl<void> {
             } else {
                 return std::forward<Awaitable>(awaitable);
             }
+#else
+            return std::forward<Awaitable>(awaitable);
+#endif
         }
 
         constexpr void return_void() noexcept(true) {}
@@ -232,6 +248,7 @@ template <> class task_impl<void> {
     std::coroutine_handle<promise_type> __M_h;
 };
 
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 class task_task {
     struct promise {
         io_context::task_t* __M_task = nullptr;
@@ -323,36 +340,40 @@ class task_task {
   protected:
     std::coroutine_handle<promise_type> __M_h;
 };
-
-template <typename T> struct is_task_capture : std::false_type {};
-template <> struct is_task_capture<task_task> : std::true_type {};
+#endif
 }  // namespace detail::coroutine
 
 template <typename T = void> using task = detail::coroutine::task_impl<T>;
 
 namespace detail::coroutine {
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 class otherwise_base {
   public:
     virtual void oper(void*) = 0;
     virtual ~otherwise_base() = default;
 };
+#endif
 
 template <typename T> struct awaitable_impl : CHXNET_NONCOPYABLE {
     struct view : CHXNET_NONCOPYABLE {
         awaitable_impl* pimpl = nullptr;
         std::coroutine_handle<> h = {};
 
+#if CHXNET_ENABLE_CORO_WHEN_ANY
         std::unique_ptr<otherwise_base> otherwise;
         std::unique_ptr<cancellation_base> cancel_op;
+#endif
         io_context::task_t* task = nullptr;
 
         constexpr view(io_context::task_t* t) noexcept(true) : task(t) {}
         view(view&& other)
             : pimpl(std::exchange(other.pimpl, nullptr)),
               h(std::exchange(other.h, {})),
+#if CHXNET_ENABLE_CORO_WHEN_ANY
               otherwise(std::exchange(other.otherwise, nullptr)),
-              task(std::exchange(other.task, nullptr)),
-              cancel_op(std::exchange(other.cancel_op, nullptr)) {
+              cancel_op(std::exchange(other.cancel_op, nullptr)),
+#endif
+              task(std::exchange(other.task, nullptr)) {
             if (pimpl) {
                 pimpl->__M_view = this;
             }
@@ -368,9 +389,11 @@ template <typename T> struct awaitable_impl : CHXNET_NONCOPYABLE {
             if (h) {
                 h.resume();
             }
+#if CHXNET_ENABLE_CORO_WHEN_ANY
             if (otherwise) {
                 otherwise->oper(this);
             }
+#endif
         }
 
         void set_value(const std::error_code& ec) noexcept(true) {
@@ -446,12 +469,11 @@ template <typename T> struct awaitable_impl : CHXNET_NONCOPYABLE {
             __M_view->h = {};
         }
     }
+#if CHXNET_ENABLE_CORO_WHEN_ANY
     constexpr std::unique_ptr<otherwise_base>& get_otherwise() noexcept(true) {
         return __M_view->otherwise;
     }
-    constexpr io_context::task_t* get_associated_task() noexcept(true) {
-        return __M_view->task;
-    }
+
     constexpr void
     set_cancellation_method(cancellation_base* b) noexcept(true) {
         __M_view->cancel_op.reset(b);
@@ -486,8 +508,14 @@ template <typename T> struct awaitable_impl : CHXNET_NONCOPYABLE {
 
         return poll_awaitable{*this};
     }
+#endif
+
+    constexpr io_context::task_t* get_associated_task() noexcept(true) {
+        return __M_view->task;
+    }
 };
 
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 template <std::size_t... Idx, typename Func, typename Tp>
 void when_any_apply(std::integer_sequence<std::size_t, Idx...>, Func&& func,
                     Tp&& tp) {
@@ -625,6 +653,7 @@ constexpr std::size_t when_any_assign(Cntl& cntl, awaitable_impl<Ts>&... ts) {
     std::tuple<awaitable_impl<Ts>&...> tp{ts...};
     return when_any_impl().when_any_assign_impl<0>(tp, cntl);
 }
+#endif
 }  // namespace detail::coroutine
 
 template <typename T>
@@ -731,6 +760,7 @@ struct main_op {
     }
 };
 
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 template <typename Task, typename Cntl, typename CompletionToken>
 decltype(auto) when_any_co_spawn(io_context& ctx, Task&& t,
                                  type_identity<Cntl> cntl_t,
@@ -740,6 +770,7 @@ decltype(auto) when_any_co_spawn(io_context& ctx, Task&& t,
         detail::async_token_bind<const std::error_code&, Cntl>(
             std::forward<CompletionToken>(completion_token)));
 }
+#endif
 }  // namespace detail::coroutine
 
 /**
@@ -763,6 +794,7 @@ decltype(auto) co_spawn(io_context& ctx, Task&& t,
             std::forward<CompletionToken>(completion_token)));
 }
 
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 template <typename... Ts>
 constexpr decltype(auto) when_any(awaitable<Ts>&... ts) {
     constexpr auto get_first = [](auto& t, auto&... ts) -> decltype(auto) {
@@ -812,6 +844,7 @@ operator||(awaitable<T>& a,
            detail::when_any_operator_impl<Ts...>& impl) noexcept(true) {
     return impl.extend(a);
 }
+#endif
 }  // namespace chx::net
 
 template <typename Task, typename CompletionToken>
@@ -839,6 +872,7 @@ operator()(io_context* ctx, Task&& coro, CompletionToken&& completion_token) {
         std::forward<CompletionToken>(completion_token));
 }
 
+#if CHXNET_ENABLE_CORO_WHEN_ANY
 template <typename Task, typename Cntl, typename CompletionToken>
 decltype(auto) chx::net::detail::
     async_operation<chx::net::detail::tags::coro_when_any_cospawn>::operator()(
@@ -935,5 +969,6 @@ constexpr decltype(auto) chx::net::detail::when_any_operator_transform(
         _) {
     return when_any_operator.get_await();
 }
+#endif
 
 #endif

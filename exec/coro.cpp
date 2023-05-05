@@ -1,3 +1,5 @@
+#define CHXNET_ENABLE_CORO_WHEN_ANY 1
+
 #include <iostream>
 #include "../include/chx/net.hpp"
 #include "../include/chx/net/detached.hpp"
@@ -15,12 +17,7 @@ net::task<> test() {
     auto a1 = acceptor1.async_accept(net::use_coro);
     auto a2 = acceptor2.async_accept(net::as_tuple(net::use_coro));
     acceptor2.close();
-    auto [ec, val] = co_await (a1 || a2);
-    std::cout << ec.message() << "\n";
-    std::cout << val.index() << "\n";
-    if (val.index() == 2) {
-        std::cout << std::get<0>(std::get<2>(val)).message() << "\n";
-    }
+    co_await (a1 || a2);
 }
 
 int main(void) {
