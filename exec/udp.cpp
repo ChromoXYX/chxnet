@@ -24,7 +24,7 @@ struct session {
 
     void do_write() {
         static const char* msg = "hello world";
-        sock.async_write(
+        sock.async_write_some(
             net::buffer(msg, 11), [](const std::error_code& e, std::size_t s) {
                 if (!e) {
                     std::cout << "write successful\n";
@@ -36,7 +36,7 @@ struct session {
 
     void do_read() {
         s.clear();
-        sock.async_read_until(net::dynamic_buffer(s), "EOL",
+        net::async_read_until(sock, net::dynamic_buffer(s), "EOL",
                               [this](const std::error_code& e, std::size_t sz) {
                                   if (!e) {
                                       s.resize(sz - 3);

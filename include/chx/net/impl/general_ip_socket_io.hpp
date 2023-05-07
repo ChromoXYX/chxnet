@@ -7,13 +7,7 @@
 #include "../buffer_sequence.hpp"
 #include "../async_combine.hpp"
 
-namespace chx::net::ip::detail::tags {
-struct simple_read {};
-struct simple_write {};
-struct readv {};
-struct writev {};
-struct connect {};
-
+namespace chx::net::detail::tags {
 struct read_until {
     template <typename Socket, typename DynamicBuffer, typename StopCond>
     struct operation : StopCond {
@@ -25,10 +19,9 @@ struct read_until {
             : socket(sock), dyn_buf(std::forward<DynBuf>(buf)),
               StopCond(std::forward<SC>(sc)) {}
 
-        template <typename Cntl>
-        void operator()(Cntl& cntl, const std::error_code& ec) {
+        template <typename Cntl> void operator()(Cntl& cntl) {
             dyn_buf.extend(128);
-            socket.async_read(buffer(dyn_buf), cntl.next());
+            socket.async_read_some(buffer(dyn_buf), cntl.next());
         }
 
         template <typename Cntl>
@@ -48,7 +41,7 @@ struct read_until {
                     cntl.complete(ec, pos);
                 } else {
                     dyn_buf.extend(128);
-                    socket.async_read(buffer(dyn_buf), cntl.next());
+                    socket.async_read_some(buffer(dyn_buf), cntl.next());
                 }
             } else {
                 cntl.complete(ec, 0);
@@ -109,6 +102,14 @@ struct read_until {
         }
     }
 };
+}  // namespace chx::net::detail::tags
+
+namespace chx::net::ip::detail::tags {
+struct simple_read {};
+struct simple_write {};
+struct readv {};
+struct writev {};
+struct connect {};
 }  // namespace chx::net::ip::detail::tags
 
 template <>
@@ -144,8 +145,7 @@ struct chx::net::detail::async_operation<chx::net::ip::detail::tags::writev> {
 };
 
 template <>
-struct chx::net::detail::async_operation<
-    chx::net::ip::detail::tags::read_until> {
+struct chx::net::detail::async_operation<chx::net::detail::tags::read_until> {
     template <typename Socket, typename DynamicBuffer, typename StopCond,
               typename CompletionToken>
     decltype(auto) operator()(io_context*, Socket*, DynamicBuffer&&, StopCond&&,
@@ -298,15 +298,15 @@ operator()(io_context* ctx, Socket* sock,
 template <typename Socket, typename DynamicBuffer, typename StopCond,
           typename CompletionToken>
 decltype(auto)
-chx::net::detail::async_operation<chx::net::ip::detail::tags::read_until>::
+chx::net::detail::async_operation<chx::net::detail::tags::read_until>::
 operator()(io_context* ctx, Socket* sock, DynamicBuffer&& dynamic_buffer,
            StopCond&& stop_cond, CompletionToken&& completion_token) {
     return async_combine<const std::error_code&, std::size_t>(
         *ctx,
-        ip::detail::tags::read_until::operation(
-            *sock, std::forward<DynamicBuffer>(dynamic_buffer),
-            ip::detail::tags::read_until::make_stop_cond(
-                std::forward<StopCond>(stop_cond))),
+        tags::read_until::operation(*sock,
+                                    std::forward<DynamicBuffer>(dynamic_buffer),
+                                    tags::read_until::make_stop_cond(
+                                        std::forward<StopCond>(stop_cond))),
         std::forward<CompletionToken>(completion_token));
 }
 

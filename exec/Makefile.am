@@ -1,5 +1,5 @@
 AM_CXXFLAGS = @__CHXNET_EXEC_CXXFLAGS@
-bin_PROGRAMS = chxnet_echo chxnet_udp chxnet_ktimer chxnet_coro
+bin_PROGRAMS = chxnet_echo chxnet_udp chxnet_ktimer chxnet_coro chxnet_tls_server
 
 if CHXNET_WITH_LLHTTP
 bin_PROGRAMS += chxnet_http
@@ -15,3 +15,5 @@ chxnet_ktimer_SOURCES = ktimer.cpp
 chxnet_ktimer_LDADD = @__CHXNET_EXEC_LDADD@
 chxnet_coro_SOURCES = coro.cpp
 chxnet_coro_LDADD = @__CHXNET_EXEC_LDADD@
+chxnet_tls_server_SOURCES = tls_server.cpp
+chxnet_tls_server_LDADD = @__CHXNET_EXEC_LDADD@

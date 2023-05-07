@@ -12,12 +12,11 @@ namespace detail {
 namespace tags {
 struct async_combine_persist {};
 struct async_combine_cancel_and_submit {};
+struct async_combine_use_delivery {};
 }  // namespace tags
 template <> struct async_operation<tags::async_combine_persist> {
     void operator()(io_context::task_t* task) noexcept(true) {
-        if (task->__M_releasable) {
-            task->get_associated_io_context().release(task);
-        }
+        task->get_associated_io_context().release(task);
     }
 };
 
@@ -30,6 +29,16 @@ template <> struct async_operation<tags::async_combine_cancel_and_submit> {
         }
     }
     void submit(io_context* ctx) { ctx->submit(); }
+};
+
+template <> struct async_operation<tags::async_combine_use_delivery> {
+    template <typename FinalFunctor, typename CompletionToken>
+    decltype(auto) operator()(io_context* ctx, FinalFunctor&& final_functor,
+                              CompletionToken&& completion_token) {
+        return ctx->async_delivery<>(
+            std::forward<FinalFunctor>(final_functor),
+            std::forward<CompletionToken>(completion_token));
+    }
 };
 
 template <typename Operation, typename CompletionToken>
@@ -49,7 +58,16 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
         // will not be invoked. and at this time, async_combine cannot be
         // cancelled by io_uring.
         // __M_associated_task->get_associated_io_context().async_nop(next());
-        direct_invoke(std::error_code{});
+        async_operation<tags::async_combine_use_delivery>()(
+            &get_associated_io_context(),
+            [](auto& token, io_context::task_t* self) mutable -> int {
+                if (!self->__M_ec) {
+                    token();
+                }
+                return 0;
+            },
+            next());
+        // direct_invoke();
     }
 
     int operator()(io_context::task_t*) {
@@ -71,6 +89,7 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     constexpr CompletionToken& get_completion_token() noexcept(true) {
         return *this;
     }
+    // this should be the last fn call of this object.
     template <typename... Ts> decltype(auto) complete(Ts&&... ts) {
         if (!__M_subtasks.empty()) {
             __CHXNET_THROW(EINVAL);

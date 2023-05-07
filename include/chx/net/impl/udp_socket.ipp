@@ -43,13 +43,13 @@ class udp::socket : public basic_socket<udp> {
     }
 
     template <typename ConstBufferSequence, typename CompletionToken>
-    decltype(auto)
-    async_write(ConstBufferSequence&& const_buffer_sequence,
-                CompletionToken&& completion_token,
-                net::detail::sfinae_placeholder<
-                    std::enable_if_t<is_const_buffer_sequence<
-                        std::remove_reference_t<ConstBufferSequence>>::value>>
-                    _ = net::detail::sfinae) {
+    decltype(auto) async_write_some(
+        ConstBufferSequence&& const_buffer_sequence,
+        CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<is_const_buffer_sequence<
+                std::remove_reference_t<ConstBufferSequence>>::value>>
+            _ = net::detail::sfinae) {
         return net::detail::async_operation<detail::tags::writev>()(
             &get_associated_io_context(), this,
             std::forward<ConstBufferSequence>(const_buffer_sequence),
@@ -58,7 +58,7 @@ class udp::socket : public basic_socket<udp> {
     }
 
     template <typename ConstBuffer, typename CompletionToken>
-    decltype(auto) async_write(
+    decltype(auto) async_write_some(
         ConstBuffer&& buffer, CompletionToken&& completion_token,
         net::detail::sfinae_placeholder<
             std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
@@ -72,10 +72,10 @@ class udp::socket : public basic_socket<udp> {
 
     template <typename MutableBuffer, typename CompletionToken>
     decltype(auto)
-    async_read(MutableBuffer&& buffer, CompletionToken&& completion_token,
-               net::detail::sfinae_placeholder<std::enable_if_t<
-                   net::detail::is_mutable_buffer<MutableBuffer>::value>>
-                   _ = net::detail::sfinae) {
+    async_read_some(MutableBuffer&& buffer, CompletionToken&& completion_token,
+                    net::detail::sfinae_placeholder<std::enable_if_t<
+                        net::detail::is_mutable_buffer<MutableBuffer>::value>>
+                        _ = net::detail::sfinae) {
         return net::detail::async_operation<detail::tags::simple_read>()(
             &get_associated_io_context(), this,
             std::forward<MutableBuffer>(buffer),
@@ -84,30 +84,18 @@ class udp::socket : public basic_socket<udp> {
     }
 
     template <typename MutableBufferSequence, typename CompletionToken>
-    decltype(auto)
-    async_read(MutableBufferSequence&& mutable_buffer_sequence,
-               CompletionToken&& completion_token,
-               net::detail::sfinae_placeholder<
-                   std::enable_if_t<is_mutable_buffer_sequence<
-                       std::remove_reference_t<MutableBufferSequence>>::value>>
-                   _ = net::detail::sfinae) {
+    decltype(auto) async_read_some(
+        MutableBufferSequence&& mutable_buffer_sequence,
+        CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<is_mutable_buffer_sequence<
+                std::remove_reference_t<MutableBufferSequence>>::value>>
+            _ = net::detail::sfinae) {
         return net::detail::async_operation<detail::tags::readv>()(
             &get_associated_io_context(), this,
             std::forward<MutableBufferSequence>(mutable_buffer_sequence),
             net::detail::async_token_bind<const std::error_code&, std::size_t>(
                 std::forward<CompletionToken>(completion_token)));
-    }
-
-    template <typename DynamicBuffer, typename StopCondition,
-              typename CompletionToken>
-    decltype(auto) async_read_until(DynamicBuffer&& dynamic_buffer,
-                                    StopCondition&& stop_condition,
-                                    CompletionToken&& completion_token) {
-        return net::detail::async_operation<detail::tags::read_until>()(
-            &get_associated_io_context(), this,
-            std::forward<DynamicBuffer>(dynamic_buffer),
-            std::forward<StopCondition>(stop_condition),
-            std::forward<CompletionToken>(completion_token));
     }
 
 #if CHXNET_KERNEL_VERSION_GREATER(6, 0) || CHXNET_KERNEL_VERSION_EQUAL(6, 0)

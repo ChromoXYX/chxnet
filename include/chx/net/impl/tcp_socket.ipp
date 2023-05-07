@@ -154,7 +154,7 @@ class tcp::socket : public socket_base {
      *
      * @param other The socket to be moved.
      */
-    socket(socket&& other) : socket_base(std::move(other)) {}
+    socket(socket&& other) noexcept(true) : socket_base(std::move(other)) {}
 
     template <typename CompletionToken>
     decltype(auto) async_connect(const ip::tcp::endpoint& end_point,
@@ -178,13 +178,13 @@ class tcp::socket : public socket_base {
      * @return decltype(auto)
      */
     template <typename ConstBufferSequence, typename CompletionToken>
-    decltype(auto)
-    async_write(ConstBufferSequence&& const_buffer_sequence,
-                CompletionToken&& completion_token,
-                net::detail::sfinae_placeholder<
-                    std::enable_if_t<is_const_buffer_sequence<
-                        std::remove_reference_t<ConstBufferSequence>>::value>>
-                    _ = net::detail::sfinae) {
+    decltype(auto) async_write_some(
+        ConstBufferSequence&& const_buffer_sequence,
+        CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<is_const_buffer_sequence<
+                std::remove_reference_t<ConstBufferSequence>>::value>>
+            _ = net::detail::sfinae) {
         return net::detail::async_operation<detail::tags::writev>()(
             &get_associated_io_context(), this,
             std::forward<ConstBufferSequence>(const_buffer_sequence),
@@ -206,7 +206,7 @@ class tcp::socket : public socket_base {
      * @return decltype(auto)
      */
     template <typename ConstBuffer, typename CompletionToken>
-    decltype(auto) async_write(
+    decltype(auto) async_write_some(
         ConstBuffer&& buffer, CompletionToken&& completion_token,
         net::detail::sfinae_placeholder<
             std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
@@ -233,10 +233,10 @@ class tcp::socket : public socket_base {
      */
     template <typename MutableBuffer, typename CompletionToken>
     decltype(auto)
-    async_read(MutableBuffer&& buffer, CompletionToken&& completion_token,
-               net::detail::sfinae_placeholder<std::enable_if_t<
-                   net::detail::is_mutable_buffer<MutableBuffer>::value>>
-                   _ = net::detail::sfinae) {
+    async_read_some(MutableBuffer&& buffer, CompletionToken&& completion_token,
+                    net::detail::sfinae_placeholder<std::enable_if_t<
+                        net::detail::is_mutable_buffer<MutableBuffer>::value>>
+                        _ = net::detail::sfinae) {
         return net::detail::async_operation<detail::tags::simple_read>()(
             &get_associated_io_context(), this,
             std::forward<MutableBuffer>(buffer),
@@ -258,13 +258,13 @@ class tcp::socket : public socket_base {
      * @return decltype(auto)
      */
     template <typename MutableBufferSequence, typename CompletionToken>
-    decltype(auto)
-    async_read(MutableBufferSequence&& mutable_buffer_sequence,
-               CompletionToken&& completion_token,
-               net::detail::sfinae_placeholder<
-                   std::enable_if_t<is_mutable_buffer_sequence<
-                       std::remove_reference_t<MutableBufferSequence>>::value>>
-                   _ = net::detail::sfinae) {
+    decltype(auto) async_read_some(
+        MutableBufferSequence&& mutable_buffer_sequence,
+        CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<is_mutable_buffer_sequence<
+                std::remove_reference_t<MutableBufferSequence>>::value>>
+            _ = net::detail::sfinae) {
         return net::detail::async_operation<detail::tags::readv>()(
             &get_associated_io_context(), this,
             std::forward<MutableBufferSequence>(mutable_buffer_sequence),
@@ -272,34 +272,23 @@ class tcp::socket : public socket_base {
                 std::forward<CompletionToken>(completion_token)));
     }
 
-    template <typename DynamicBuffer, typename StopCondition,
-              typename CompletionToken>
-    decltype(auto) async_read_until(DynamicBuffer&& dynamic_buffer,
-                                    StopCondition&& stop_condition,
-                                    CompletionToken&& completion_token) {
-        return net::detail::async_operation<detail::tags::read_until>()(
-            &get_associated_io_context(), this,
-            std::forward<DynamicBuffer>(dynamic_buffer),
-            std::forward<StopCondition>(stop_condition),
-            std::forward<CompletionToken>(completion_token));
-    }
+    //     template <typename File, typename CompletionToken>
+    //     decltype(auto) async_send_file(File&& file,
+    //                                    CompletionToken&& completion_token) {
+    //         return
+    //         net::detail::async_operation<detail::tags::tcp_send_file>()(
+    //             &get_associated_io_context(), this, std::forward<File>(file),
+    //             std::forward<CompletionToken>(completion_token));
+    //     }
 
-    template <typename File, typename CompletionToken>
-    decltype(auto) async_send_file(File&& file,
-                                   CompletionToken&& completion_token) {
-        return net::detail::async_operation<detail::tags::tcp_send_file>()(
-            &get_associated_io_context(), this, std::forward<File>(file),
-            std::forward<CompletionToken>(completion_token));
-    }
-
-  protected:
-    template <typename CompletionToken>
-    decltype(auto) async_splice(int fd_in, int fd_out, std::size_t len,
-                                CompletionToken&& completion_token) {
-        return net::detail::async_operation<detail::tags::tcp_splice>()(
-            &get_associated_io_context(), this, fd_in, fd_out, len,
-            std::forward<CompletionToken>(completion_token));
-    }
+    //   protected:
+    //     template <typename CompletionToken>
+    //     decltype(auto) async_splice(int fd_in, int fd_out, std::size_t len,
+    //                                 CompletionToken&& completion_token) {
+    //         return net::detail::async_operation<detail::tags::tcp_splice>()(
+    //             &get_associated_io_context(), this, fd_in, fd_out, len,
+    //             std::forward<CompletionToken>(completion_token));
+    //     }
 };
 }  // namespace chx::net::ip
 

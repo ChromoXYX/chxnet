@@ -27,4 +27,5 @@ class tcp {
 };
 }  // namespace chx::net::ip
 
+#include "./impl/tcp_socket.ipp"
 #include "./impl/tcp_acceptor.ipp"

@@ -40,10 +40,6 @@ class io_context : CHXNET_NONCOPYABLE {
     bool __M_stopped = false;
 
     struct __task_t : CHXNET_NONCOPYABLE {
-        friend class io_context;
-        template <typename Tag> friend struct detail::async_operation;
-
-      public:
         __task_t(io_context* p) noexcept(true) : __M_ctx(p) {}
 
         io_context* __M_ctx = nullptr;
@@ -54,7 +50,7 @@ class io_context : CHXNET_NONCOPYABLE {
 
         bool __M_avail = true;
         bool __M_persist = false;
-        bool __M_releasable = true;
+        bool __M_notif = false;
         bool __M_cancel_invoke = false;
         bool __M_option5 = true;
         bool __M_option6 = true;
@@ -72,11 +68,10 @@ class io_context : CHXNET_NONCOPYABLE {
             __M_ec.clear();
             __M_res = 0;
             __M_persist = false;
-            __M_releasable = true;
+            __M_notif = false;
             __M_cancel_invoke = false;
         }
 
-      public:
         constexpr io_context& get_associated_io_context() noexcept(true) {
             return *__M_ctx;
         }
@@ -211,7 +206,7 @@ class io_context : CHXNET_NONCOPYABLE {
         io_uring_sqe_set_data(_r.first, _r.second);
         return _r;
     }
-    [[deprecated]] void get(io_uring_sqe** sqe, __task_t** task) {
+    void get(io_uring_sqe** sqe, __task_t** task) {
         *sqe = get_sqe();
         *task = acquire();
         io_uring_sqe_set_data(*sqe, *task);
@@ -221,6 +216,11 @@ class io_context : CHXNET_NONCOPYABLE {
         io_uring_prep_cancel(sqe, task, flags);
         sqe->flags = IOSQE_CQE_SKIP_SUCCESS;
     }
+
+    template <typename... Signature, typename FinalFunctor,
+              typename CompletionToken>
+    decltype(auto) async_delivery(FinalFunctor&& final_functor,
+                                  CompletionToken&& completion_token);
 
   private:
     void __advance(unsigned int nr) noexcept(true) {
@@ -250,29 +250,39 @@ class io_context : CHXNET_NONCOPYABLE {
                     auto* task =
                         static_cast<__task_t*>(io_uring_cqe_get_data(cqe));
 
-                    // if this cqe is not notif
-                    // res of notif is zero
-                    if ((cqe->flags & IORING_CQE_F_NOTIF) == 0) {
-                        task->__M_res = cqe->res;
-                        if (cqe->res < 0) {
-                            detail::assign_ec(task->__M_ec, -cqe->res);
-                        } else {
-                            task->__M_ec.clear();
-                        }
-                    }
-                    // if there is no more cqe
-                    if ((cqe->flags & IORING_CQE_F_MORE) == 0) {
-                        bool _need_release = !task->__M_persist;
+                    if (task->__M_notif && task->__M_persist) {
+                        // if task is aware of notif
                         try {
                             task->__M_token(task);
                         } catch (...) {
+                            std::rethrow_exception(std::current_exception());
+                        }
+                    } else {
+                        // if this cqe is not notif
+                        // res of notif is zero
+                        if ((cqe->flags & IORING_CQE_F_NOTIF) == 0) {
+                            task->__M_res = cqe->res;
+                            if (cqe->res < 0) {
+                                detail::assign_ec(task->__M_ec, -cqe->res);
+                            } else {
+                                task->__M_ec.clear();
+                            }
+                        }
+                        // if there is no more cqe
+                        if ((cqe->flags & IORING_CQE_F_MORE) == 0) {
+                            bool _need_release = !task->__M_persist;
+                            try {
+                                task->__M_token(task);
+                            } catch (...) {
+                                if (_need_release) {
+                                    release(task);
+                                }
+                                std::rethrow_exception(
+                                    std::current_exception());
+                            }
                             if (_need_release) {
                                 release(task);
                             }
-                            std::rethrow_exception(std::current_exception());
-                        }
-                        if (_need_release) {
-                            release(task);
                         }
                     }
                 }
@@ -394,17 +404,6 @@ class io_context : CHXNET_NONCOPYABLE {
     template <typename CompletionToken>
     decltype(auto) async_nop(CompletionToken&& completion_token);
 };
-
-namespace detail {
-namespace tags {
-struct nop {};
-}  // namespace tags
-
-template <> struct async_operation<tags::nop> {
-    template <typename CompletionToken>
-    decltype(auto) operator()(io_context* ctx, CompletionToken&& token);
-};
-}  // namespace detail
 }  // namespace chx::net
 
 #include "./impl/io_context.ipp"

@@ -7,6 +7,7 @@
 
 namespace chx::net::detail::tags {
 struct cancel_fd {};
+struct sock_poll {};
 }  // namespace chx::net::detail::tags
 
 template <>
@@ -22,8 +23,16 @@ struct chx::net::detail::async_operation<::chx::net::detail::tags::cancel_fd> {
     }
 };
 
+template <>
+struct chx::net::detail::async_operation<chx::net::detail::tags::sock_poll> {
+    template <typename Sock, typename CompletionToken>
+    decltype(auto) operator()(io_context*, Sock&, int, CompletionToken&&);
+};
+
 namespace chx::net {
 template <typename Protocol> class basic_socket {
+    template <typename Tag> friend struct detail::async_operation;
+
   protected:
     const io_context* __M_ctx = nullptr;
     int __M_fd = -1;
@@ -35,6 +44,9 @@ template <typename Protocol> class basic_socket {
     basic_socket(basic_socket&& other) noexcept(true)
         : __M_ctx(other.__M_ctx), __M_fd(std::exchange(other.__M_fd, -1)),
           __M_associated_task(std::exchange(other.__M_associated_task, 0)) {}
+
+    template <typename CompletionToken>
+    decltype(auto) async_poll(int event, CompletionToken&& completion_token);
 
   public:
     ~basic_socket() {
@@ -201,3 +213,33 @@ template <typename Protocol> class basic_socket {
     }
 };
 }  // namespace chx::net
+
+template <typename Sock, typename CompletionToken>
+decltype(auto)
+chx::net::detail::async_operation<chx::net::detail::tags::sock_poll>::
+operator()(io_context* ctx, Sock& sock, int event,
+           CompletionToken&& completion_token) {
+    io_context::task_t* task = ctx->acquire();
+    auto* sqe = ctx->get_sqe(task);
+    io_uring_prep_poll_add(sqe, sock.native_handler(), event);
+
+    return detail::async_token_init(
+        task->__M_token.emplace(detail::async_token_generate(
+            task,
+            [](auto& token, io_context::task_t* self) -> int {
+                token(self->__M_ec, self->__M_res);
+                return 0;
+            },
+            completion_token)),
+        completion_token);
+}
+
+template <typename Protocol>
+template <typename CompletionToken>
+decltype(auto) chx::net::basic_socket<Protocol>::async_poll(
+    int event, CompletionToken&& completion_token) {
+    return detail::async_operation<detail::tags::sock_poll>()(
+        &get_associated_io_context(), *this, event,
+        detail::async_token_bind<const std::error_code&, int>(
+            std::forward<CompletionToken>(completion_token)));
+}

@@ -170,18 +170,18 @@ inline std::error_category& error_category() {
 
         virtual std::string message(int ev) const override {
             switch (ev) {
-                case errc::internal_error: {
-                    return "chxnet internal error";
-                }
-                case errc::socket_already_open: {
-                    return "Socket already opened";
-                }
-                case errc::eof: {
-                    return "Encountered EOF";
-                }
-                default: {
-                    return ::strerror(ev);
-                }
+            case errc::internal_error: {
+                return "chxnet internal error";
+            }
+            case errc::socket_already_open: {
+                return "Socket already opened";
+            }
+            case errc::eof: {
+                return "Encountered EOF";
+            }
+            default: {
+                return ::strerror(ev);
+            }
             }
         }
     } static __c;
@@ -194,8 +194,9 @@ inline std::error_condition make_error_condition(errc::errc_impl e) {
 }
 
 namespace detail {
-inline std::error_code make_ec(int code, const std::error_category& category =
-                                             error_category()) noexcept(true) {
+inline std::error_code
+make_ec(int code,
+        const std::error_category& category = error_category()) noexcept(true) {
     return {code, category};
 }
 inline void assign_ec(
@@ -207,23 +208,20 @@ inline void assign_ec(
 #define __CHXNET_MAKE_QUOTE_IMPL(s) #s
 #define __CHXNET_MAKE_QUOTE(s) __CHXNET_MAKE_QUOTE_IMPL(s)
 
-#define __CHXNET_MAKE_EX(ec)                    \
-    ::chx::net::exception(ec.message() +        \
-                          " at file: " __FILE__ \
-                          " line: " __CHXNET_MAKE_QUOTE(__LINE__))
-#define __CHXNET_MAKE_EX_WITH(ec, type)                   \
-    ::chx::net::type(ec.message() + " at file: " __FILE__ \
-                                    " line: " __CHXNET_MAKE_QUOTE(__LINE__))
-
-#define __CHXNET_THROW(code)                                                  \
-    throw ::chx::net::exception(::chx::net::detail::make_ec(code).message() + \
-                                " at file: " __FILE__                         \
-                                " line: " __CHXNET_MAKE_QUOTE(__LINE__))
-#define __CHXNET_THROW_WITH(code, type)                                  \
-    throw ::chx::net::type(::chx::net::detail::make_ec(code).message() + \
-                           " at file: " __FILE__                         \
-                           " line: " __CHXNET_MAKE_QUOTE(__LINE__))
-#define __CHXNET_THROW_EC(ec) throw __CHXNET_MAKE_EX(ec)
+#define __CHXNET_MAKE_EX_WITH(ec, type)                                        \
+    type(ec.message() + " at file: " __FILE__                                  \
+                        " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+#define __CHXNET_MAKE_EX(ec) __CHXNET_MAKE_EX_WITH(ec, ::chx::net::exception)
+#define __CHXNET_THROW_WITH(code, type)                                        \
+    throw type(::chx::net::detail::make_ec(code).message() +                   \
+               " at file: " __FILE__ " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+#define __CHXNET_THROW(code) __CHXNET_THROW_WITH(code, ::chx::net::exception)
 #define __CHXNET_THROW_EC_WITH(ec, type) throw __CHXNET_MAKE_EX_WITH(ec, type)
+#define __CHXNET_THROW_EC(ec) __CHXNET_THROW_EC_WITH(ec, ::chx::net::exception)
+#define __CHXNET_THROW_CSTR_WITH(cstr, type)                                   \
+    throw type(std::string(cstr) + " at file: " __FILE__                       \
+                                   " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+#define __CHXNET_THROW_CSTR(cstr)                                              \
+    __CHXNET_THROW_CSTR_WITH(cstr, ::chx::net::exception)
 }  // namespace detail
 }  // namespace chx::net

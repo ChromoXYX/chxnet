@@ -14,7 +14,7 @@ struct session : std::enable_shared_from_this<session> {
 
     void do_read() {
         s.clear();
-        sock.async_read_until(net::dynamic_buffer(s), "EOL",
+        net::async_read_until(sock, net::dynamic_buffer(s), "EOL",
                               [self = shared_from_this()](
                                   const std::error_code& ec, std::size_t size) {
                                   if (!ec) {
@@ -29,7 +29,7 @@ struct session : std::enable_shared_from_this<session> {
     }
 
     void do_write() {
-        sock.async_write(
+        sock.async_write_some(
             net::buffer(s), [self = shared_from_this()](
                                 const std::error_code& ec, std::size_t size) {
                 if (!ec) {

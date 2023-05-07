@@ -27,8 +27,8 @@ class mutable_buffer {
     const std::size_t __M_sz = 0;
 
   public:
-    mutable_buffer() = default;
-    mutable_buffer(const mutable_buffer&) = default;
+    constexpr mutable_buffer() noexcept(true) = default;
+    constexpr mutable_buffer(const mutable_buffer&) noexcept(true) = default;
 
     constexpr void* const data() const noexcept(true) { return __M_data; }
     constexpr std::size_t size() const noexcept(true) { return __M_sz; }
@@ -72,8 +72,8 @@ class const_buffer {
     const std::size_t __M_sz = 0;
 
   public:
-    const_buffer() = default;
-    const_buffer(const const_buffer&) = default;
+    constexpr const_buffer() = default;
+    constexpr const_buffer(const const_buffer&) noexcept(true) = default;
 
     constexpr const_buffer(const mutable_buffer& b) noexcept(true)
         : __M_data(b.data()), __M_sz(b.size()) {}

@@ -64,7 +64,7 @@ struct http_state_machine : std::enable_shared_from_this<http_state_machine> {
 
     void consume() {
         net_buf.clear();
-        sock.async_read_until(
+        net::async_read_until(sock,
             net::dynamic_buffer(net_buf), "\r\n",
             [self = shared_from_this()](const std::error_code& e,
                                         std::size_t s) {
@@ -100,7 +100,7 @@ struct http_state_machine : std::enable_shared_from_this<http_state_machine> {
         static char response[] =
             "HTTP/1.1 200 OK\r\nContent-Length: "
             "11\r\nConnection: keep-alive\r\n\r\nHello World";
-        sock.async_write(resp, [self = shared_from_this()](
+        sock.async_write_some(resp, [self = shared_from_this()](
                                    const std::error_code& e, std::size_t s) {
             self->resp = {};
             self->headers.clear();
