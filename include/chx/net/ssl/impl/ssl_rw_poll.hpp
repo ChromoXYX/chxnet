@@ -20,8 +20,6 @@ struct ssl_rw_poll : SSLOperation {
     using use_delivery =
         net::detail::async_operation<net::detail::tags::ssl_use_delivery>;
     Stream* const sock;
-    enum poll_t : int { nop = 0, poll_in = POLLIN, poll_out = POLLOUT };
-    poll_t poll_type = nop;
 
     template <typename Cntl> void perform(Cntl& cntl) {
         ERR_clear_error();
@@ -40,10 +38,8 @@ struct ssl_rw_poll : SSLOperation {
             int code = SSL_get_error(sock->get_associated_SSL(), r);
             int current_errno = errno;
             if (code == SSL_ERROR_WANT_READ) {
-                poll_type = poll_in;
                 return use_poll()(*sock, POLLIN, cntl.next());
             } else if (code == SSL_ERROR_WANT_WRITE) {
-                poll_type = poll_out;
                 return use_poll()(*sock, POLLOUT, cntl.next());
             } else if (code == SSL_ERROR_SYSCALL) {
                 return use_delivery()
@@ -86,33 +82,44 @@ struct ssl_rw_poll : SSLOperation {
 
     template <typename Cntl>
     void operator()(Cntl& cntl, const std::error_code& ec, int revents) {
-        if (poll_type && (poll_type == revents)) {
-            return perform(cntl);
-        } else {
-            if (revents & (POLLRDHUP | POLLHUP)) {
-                return use_delivery()
-                    .oper<const std::error_code&, std::size_t, res_tag>(
-                        &sock->get_associated_io_context(),
-                        [](auto& token,
-                           io_context::task_t* self) mutable -> int {
-                            token(net::detail::make_ec(net::errc::eof), 0,
-                                  res_tag{});
-                            return 0;
-                        },
-                        cntl.next());
+        if (!ec) {
+            if (revents == POLLIN || revents == POLLOUT) {
+                return perform(cntl);
             } else {
-                return use_delivery()
-                    .oper<const std::error_code&, std::size_t, res_tag>(
-                        &sock->get_associated_io_context(),
-                        [](auto& token,
-                           io_context::task_t* self) mutable -> int {
-                            token(
-                                net::detail::make_ec(net::errc::internal_error),
-                                0, res_tag{});
-                            return 0;
-                        },
-                        cntl.next());
+                if (revents & (POLLRDHUP | POLLHUP)) {
+                    return use_delivery()
+                        .oper<const std::error_code&, std::size_t, res_tag>(
+                            &sock->get_associated_io_context(),
+                            [](auto& token,
+                               io_context::task_t* self) mutable -> int {
+                                token(net::detail::make_ec(net::errc::eof), 0,
+                                      res_tag{});
+                                return 0;
+                            },
+                            cntl.next());
+                } else {
+                    return use_delivery()
+                        .oper<const std::error_code&, std::size_t, res_tag>(
+                            &sock->get_associated_io_context(),
+                            [](auto& token,
+                               io_context::task_t* self) mutable -> int {
+                                token(net::detail::make_ec(
+                                          net::errc::internal_error),
+                                      0, res_tag{});
+                                return 0;
+                            },
+                            cntl.next());
+                }
             }
+        } else {
+            return use_delivery()
+                .oper<const std::error_code&, std::size_t, res_tag>(
+                    &sock->get_associated_io_context(),
+                    [ec](auto& token, io_context::task_t* self) mutable -> int {
+                        token(ec, 0, res_tag{});
+                        return 0;
+                    },
+                    cntl.next());
         }
     }
 

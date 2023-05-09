@@ -22,16 +22,16 @@ struct session : std::enable_shared_from_this<session> {
     }
 
     void do_read() {
-        buf.resize(1024);
-        sock.async_read_some(net::mutable_buffer(buf),
-                             [self = shared_from_this()](
-                                 const std::error_code& e, std::size_t s) {
-                                 if (!e) {
-                                     self->do_write();
-                                 } else {
-                                     self->do_shutdown();
-                                 }
-                             });
+        buf.clear();
+        net::async_read_until(sock, net::dynamic_buffer(buf), "\r\n\r\n",
+                              [self = shared_from_this()](
+                                  const std::error_code& e, std::size_t s) {
+                                  if (!e) {
+                                      self->do_write();
+                                  } else {
+                                      self->do_shutdown();
+                                  }
+                              });
     }
 
     void do_write() {
@@ -64,8 +64,8 @@ struct server {
           ssl_ctx(net::ssl::context::tls_server) {
         ssl_ctx.use_certificate_file("cert.pem", ssl_ctx.pem);
         ssl_ctx.use_PrivateKey_file("key.pem", ssl_ctx.pem);
-        ssl_ctx.set_min_proto_version(ssl_ctx.tls1_2);
-        ssl_ctx.set_max_proto_version(ssl_ctx.tls1_2);
+        // ssl_ctx.set_min_proto_version(ssl_ctx.tls1_2);
+        // ssl_ctx.set_max_proto_version(ssl_ctx.tls1_2);
         // ssl_ctx.set_options(SSL_OP_ENABLE_KTLS);
     }
 
