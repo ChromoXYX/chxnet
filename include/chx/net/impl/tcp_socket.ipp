@@ -56,6 +56,14 @@ class tcp::socket : public socket_base {
      */
     socket(socket&& other) noexcept(true) : socket_base(std::move(other)) {}
 
+    socket& operator=(socket&& other) noexcept(true) {
+        if (this == &other) {
+            return *this;
+        }
+        socket_base::operator=(std::move(other));
+        return *this;
+    }
+
     template <typename CompletionToken>
     decltype(auto) async_connect(const ip::tcp::endpoint& end_point,
                                  CompletionToken&& completion_token) {

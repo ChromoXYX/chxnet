@@ -36,14 +36,22 @@ template <typename Protocol> class basic_socket {
   protected:
     const io_context* __M_ctx = nullptr;
     int __M_fd = -1;
-    std::size_t __M_associated_task = 0;
+    // std::size_t __M_associated_task = 0;
 
     constexpr basic_socket(io_context* ctx) noexcept(true) : __M_ctx(ctx) {
         assert(ctx != nullptr);
     }
     basic_socket(basic_socket&& other) noexcept(true)
-        : __M_ctx(other.__M_ctx), __M_fd(std::exchange(other.__M_fd, -1)),
-          __M_associated_task(std::exchange(other.__M_associated_task, 0)) {}
+        : __M_ctx(other.__M_ctx), __M_fd(std::exchange(other.__M_fd, -1)) {}
+
+    basic_socket& operator=(basic_socket&& other) noexcept(true) {
+        if (this == &other) {
+            return *this;
+        }
+        __M_ctx = other.__M_ctx;
+        __M_fd = std::exchange(other.__M_fd, -1);
+        return *this;
+    }
 
     template <typename CompletionToken>
     decltype(auto) async_poll(int event, CompletionToken&& completion_token);

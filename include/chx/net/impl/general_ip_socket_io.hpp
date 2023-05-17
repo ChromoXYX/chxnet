@@ -301,13 +301,14 @@ decltype(auto)
 chx::net::detail::async_operation<chx::net::detail::tags::read_until>::
 operator()(io_context* ctx, Socket* sock, DynamicBuffer&& dynamic_buffer,
            StopCond&& stop_cond, CompletionToken&& completion_token) {
+    using operation_type = decltype(tags::read_until::operation(
+        *sock, std::forward<DynamicBuffer>(dynamic_buffer),
+        tags::read_until::make_stop_cond(std::forward<StopCond>(stop_cond))));
     return async_combine<const std::error_code&, std::size_t>(
-        *ctx,
-        tags::read_until::operation(*sock,
-                                    std::forward<DynamicBuffer>(dynamic_buffer),
-                                    tags::read_until::make_stop_cond(
-                                        std::forward<StopCond>(stop_cond))),
-        std::forward<CompletionToken>(completion_token));
+        *ctx, std::forward<CompletionToken>(completion_token),
+        type_identity<operation_type>(), *sock,
+        std::forward<DynamicBuffer>(dynamic_buffer),
+        tags::read_until::make_stop_cond(std::forward<StopCond>(stop_cond)));
 }
 
 template <typename Socket, typename Endpoint, typename CompletionToken>

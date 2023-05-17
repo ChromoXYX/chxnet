@@ -30,7 +30,10 @@ class bad_io_context_exec : public exception {
 
 namespace detail {
 template <typename Tag> struct async_operation;
-}
+namespace tags {
+struct use_delivery {};
+}  // namespace tags
+}  // namespace detail
 
 class io_context : CHXNET_NONCOPYABLE {
     template <typename Tag> friend struct detail::async_operation;
@@ -199,6 +202,15 @@ class io_context : CHXNET_NONCOPYABLE {
                 throw bad_io_context_exec("cannot get sqe");
             }
         }
+    }
+
+    [[nodiscard]] io_uring_sqe*
+    try_get_sqe(__task_t* task = nullptr) noexcept(true) {
+        auto* sqe = io_uring_get_sqe(&__M_ring);
+        if (sqe) {
+            io_uring_sqe_set_data(sqe, task);
+        }
+        return sqe;
     }
 
     [[nodiscard]] std::pair<io_uring_sqe*, __task_t*> get() {
@@ -405,5 +417,17 @@ class io_context : CHXNET_NONCOPYABLE {
     decltype(auto) async_nop(CompletionToken&& completion_token);
 };
 }  // namespace chx::net
+
+template <>
+struct chx::net::detail::async_operation<chx::net::detail::tags::use_delivery> {
+    template <typename... Signature, typename FinalFunctor,
+              typename CompletionToken>
+    decltype(auto) oper(io_context* ctx, FinalFunctor&& final_functor,
+                        CompletionToken&& completion_token) {
+        return ctx->async_delivery<Signature...>(
+            std::forward<FinalFunctor>(final_functor),
+            std::forward<CompletionToken>(completion_token));
+    }
+};
 
 #include "./impl/io_context.ipp"

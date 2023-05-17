@@ -18,7 +18,7 @@ struct ssl_rw_poll : SSLOperation {
 
     using use_poll = net::detail::async_operation<net::detail::tags::use_poll>;
     using use_delivery =
-        net::detail::async_operation<net::detail::tags::ssl_use_delivery>;
+        net::detail::async_operation<net::detail::tags::use_delivery>;
     Stream* const sock;
 
     template <typename Cntl> void perform(Cntl& cntl) {

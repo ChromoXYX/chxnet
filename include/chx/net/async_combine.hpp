@@ -4,6 +4,7 @@
 #include "./async_token.hpp"
 #include "./attribute.hpp"
 #include "./detail/task_aware.hpp"
+#include "./detail/type_identity.hpp"
 
 #include <algorithm>
 
@@ -48,9 +49,10 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     io_context::task_t* const __M_associated_task;
     std::vector<io_context::task_t*> __M_subtasks;
 
-    template <typename Op, typename C>
-    constexpr async_combine_impl(io_context::task_t* task, Op&& op, C&& c)
-        : __M_associated_task(task), Operation(std::forward<Op>(op)),
+    template <typename OpType, typename... OpArgs, typename C>
+    constexpr async_combine_impl(io_context::task_t* task, C&& c,
+                                 type_identity<OpType>, OpArgs&&... args)
+        : __M_associated_task(task), Operation(std::forward<OpArgs>(args)...),
           CompletionToken(std::forward<C>(c)) {
         // may be dangerous?
         // if async_combine is cancelled, would async_nop invoke it?
@@ -147,8 +149,9 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
         return task_aware(next_guard(this));
     }
 };
-template <typename Operation, typename CompletionToken>
-async_combine_impl(io_context::task_t*, Operation&&, CompletionToken&&)
+template <typename CompletionToken, typename Operation, typename... OpArgs>
+async_combine_impl(io_context::task_t*, CompletionToken&&,
+                   type_identity<Operation>, OpArgs&&...)
     -> async_combine_impl<std::remove_reference_t<Operation>,
                           std::remove_reference_t<CompletionToken>>;
 
@@ -157,24 +160,27 @@ struct combine {};
 }  // namespace tags
 
 template <> struct async_operation<tags::combine> {
-    template <typename Operation, typename CompletionToken>
-    decltype(auto) operator()(io_context& ctx, Operation&& operation,
-                              CompletionToken&& completion_token) {
+    template <typename Operation, typename... OpArgs, typename CompletionToken>
+    decltype(auto) operator()(io_context& ctx,
+                              CompletionToken&& completion_token,
+                              type_identity<Operation> opt, OpArgs&&... args) {
         io_context::task_t* task = ctx.acquire();
 
         task->__M_persist = true;
         task->__M_cancel_invoke = true;
         using __ctad_type = decltype(detail::async_combine_impl(
-            task, std::forward<Operation>(operation),
+            task,
             std::move(detail::async_token_generate(
                 task, __CHXNET_FAKE_FINAL_FUNCTOR(),
-                completion_token)(nullptr))));
+                completion_token)(nullptr)),
+            opt, std::forward<OpArgs>(args)...));
         return detail::async_token_init(
             task->__M_token.emplace<__ctad_type>(
-                detail::inplace, task, std::forward<Operation>(operation),
+                detail::inplace, task,
                 std::move(detail::async_token_generate(
                     task, __CHXNET_FAKE_FINAL_FUNCTOR(),
-                    completion_token)(nullptr))),
+                    completion_token)(nullptr)),
+                opt, std::forward<OpArgs>(args)...),
             completion_token);
     }
 };
@@ -194,12 +200,15 @@ template <> struct async_operation<tags::combine> {
  * combined async tasks completed.
  * @return decltype(auto)
  */
-template <typename... Signature, typename Operation, typename CompletionToken>
-decltype(auto) async_combine(io_context& ctx, Operation&& op,
-                             CompletionToken&& completion_token) {
+template <typename... Signature, typename Operation, typename... OpArgs,
+          typename CompletionToken>
+decltype(auto)
+async_combine(io_context& ctx, CompletionToken&& completion_token,
+              detail::type_identity<Operation> opt, OpArgs&&... args) {
     return detail::async_operation<detail::tags::combine>()(
-        ctx, std::forward<Operation>(op),
+        ctx,
         detail::async_token_bind<Signature...>(
-            std::forward<CompletionToken>(completion_token)));
+            std::forward<CompletionToken>(completion_token)),
+        opt, std::forward<OpArgs>(args)...);
 }
 }  // namespace chx::net
