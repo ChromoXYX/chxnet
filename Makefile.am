@@ -1,1 +1,1 @@
-SUBDIRS = include exec
+SUBDIRS = include test

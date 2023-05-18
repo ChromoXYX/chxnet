@@ -4,7 +4,6 @@
 #include "../basic_socket.hpp"
 
 #include "./general_ip_socket_io.hpp"
-#include "../detail/version_compare.hpp"
 
 namespace chx::net::ip::detail::tags {
 struct udp_sendto {};
@@ -98,7 +97,6 @@ class udp::socket : public basic_socket<udp> {
                 std::forward<CompletionToken>(completion_token)));
     }
 
-#if CHXNET_KERNEL_VERSION_GREATER(6, 0) || CHXNET_KERNEL_VERSION_EQUAL(6, 0)
     template <typename ConstBuffer, typename CompletionToken>
     decltype(auto) async_sendto(
         ConstBuffer&& buffer, const endpoint& ep,
@@ -106,14 +104,11 @@ class udp::socket : public basic_socket<udp> {
         net::detail::sfinae_placeholder<
             std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
             _ = net::detail::sfinae) {
-        static_assert(CHXNET_KERNEL_VERSION_GREATER(6, 0) ||
-                      CHXNET_KERNEL_VERSION_EQUAL(6, 0));
         return net::detail::async_operation<detail::tags::udp_sendto>()(
             &get_associated_io_context(), this,
             std::forward<ConstBuffer>(buffer), ep,
             std::forward<CompletionToken>(completion_token));
     }
-#endif
 };
 }  // namespace chx::net::ip
 

@@ -83,7 +83,7 @@ Makefile
 *.exe
 *.out
 *.app
-exec/chxnet_*
+example/chxnet_*
 
 # VS Code & others
 .cache/
@@ -93,3 +93,13 @@ compile_commands.json
 callgrind.out.*
 docs/
 perf.*
+*.log
+*.trs
+**/config.*
+**/config.*
+**/configure
+**/aclocal.m4
+
+test/*
+!test/*.cpp
+!test/Makefile.am
