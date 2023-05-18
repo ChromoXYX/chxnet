@@ -1,1 +1,1 @@
-SUBDIRS = include test
+SUBDIRS = include test pkgconfig

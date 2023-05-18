@@ -1,0 +1,9 @@
+prefix=@prefix@
+includedir=@prefix@/include
+
+Name: chxnet
+Version: @__CHXNET_VERSION@
+Description: chxnet
+URL: https://github.com/ChromoXYX/chxnet
+
+Cflags: -I${includedir}

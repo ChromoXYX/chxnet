@@ -99,6 +99,7 @@ perf.*
 **/config.*
 **/configure
 **/aclocal.m4
+pkgconfig/chxnet.pc
 
 test/*
 !test/*.cpp

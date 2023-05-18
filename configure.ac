@@ -1,6 +1,8 @@
 AC_INIT([0.0], [chxnet examples])
 AM_INIT_AUTOMAKE([-Werror -Wall foreign])
 
+AC_SUBST(__CHXNET_VERSION, ["0.0"])
+
 AC_SUBST(__CHXNET_TEST_LDADD, ["-lssl -lcrypto"])
 AC_SUBST(__CHXNET_TEST_CXXFLAGS)
 
@@ -49,7 +51,10 @@ dnl AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
 AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])
 AC_CONFIG_FILES([
     Makefile
+    pkgconfig/chxnet.pc
+
     include/Makefile
     test/Makefile
+    pkgconfig/Makefile
 ])
 AC_OUTPUT
