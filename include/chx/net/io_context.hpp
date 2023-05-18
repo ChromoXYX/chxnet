@@ -146,7 +146,7 @@ class io_context : CHXNET_NONCOPYABLE {
                 return p;
             }
         }
-        throw bad_io_context_exec("io_context task queue internal error");
+        __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
     }
 
     void submit() {
@@ -199,7 +199,7 @@ class io_context : CHXNET_NONCOPYABLE {
                 io_uring_sqe_set_data(sqe, task);
                 return sqe;
             } else {
-                throw bad_io_context_exec("cannot get sqe");
+                __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
             }
         }
     }
@@ -343,7 +343,7 @@ class io_context : CHXNET_NONCOPYABLE {
         __M_static_task_queue =
             static_cast<__task_t*>(::malloc(sizeof(__task_t) * static_task_sz));
         if (__M_static_task_queue == nullptr) {
-            throw std::bad_alloc();
+            __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
         }
 
         for (std::size_t i = 0; i < static_task_sz; ++i) {

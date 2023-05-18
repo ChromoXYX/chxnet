@@ -55,7 +55,7 @@ class ktimer : CHXNET_NONCOPYABLE {
     constexpr int native_handler() const noexcept(true) { return __M_fd; }
 
     bool is_open() const noexcept(true) {
-        return native_handler() != -1 &&
+        return native_handler() > 0 &&
                (::fcntl(native_handler(), F_GETFD) || errno != EBADF);
     }
 

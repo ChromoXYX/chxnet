@@ -1,10 +1,10 @@
 AM_CXXFLAGS = @__CHXNET_EXEC_CXXFLAGS@
-bin_PROGRAMS = chxnet_echo chxnet_udp chxnet_ktimer \
+check_PROGRAMS = chxnet_echo chxnet_udp chxnet_ktimer \
     chxnet_coro chxnet_tls_server \
     chxnet_sendfile
 
 if CHXNET_WITH_LLHTTP
-bin_PROGRAMS += chxnet_http
+check_PROGRAMS += chxnet_http
 chxnet_http_LDADD = @__CHXNET_EXEC_LDADD@
 chxnet_http_SOURCES = http.cpp
 endif

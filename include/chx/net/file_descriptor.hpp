@@ -19,7 +19,7 @@ class file_descriptor : CHXNET_NONCOPYABLE {
 
     ~file_descriptor() noexcept(true) {
         if (is_open()) {
-            ::close(native_handler());
+            close();
         }
     }
 
@@ -31,7 +31,7 @@ class file_descriptor : CHXNET_NONCOPYABLE {
     constexpr void set_fd(int new_fd) noexcept(true) { __M_fd = new_fd; }
 
     bool is_open() const noexcept(true) {
-        return native_handler() != -1 &&
+        return native_handler() > 0 &&
                (::fcntl(native_handler(), F_GETFD) || errno != EBADF);
     }
     int close() noexcept(true) { return ::close(native_handler()); }

@@ -218,7 +218,7 @@ class signal {
      * @return false
      */
     bool is_open() noexcept(true) {
-        return __M_sigfd != -1 &&
+        return __M_sigfd > 0 &&
                (::fcntl(__M_sigfd, F_GETFD) != -1 || errno != EBADF);
     }
 

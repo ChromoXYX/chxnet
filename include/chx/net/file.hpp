@@ -25,6 +25,21 @@ class file : public file_descriptor {
     file(io_context& ctx, const std::filesystem::path& path,
          int flags = O_RDONLY, int mode = 0)
         : file(ctx, path.c_str(), flags, mode) {}
+
+    template <typename CompletionToken>
+    decltype(auto) async_openat(const file_descriptor& dir,
+                                const char* filename, const open_how& h,
+                                CompletionToken&& completion_token);
+    template <typename CompletionToken>
+    decltype(auto) async_openat(const file_descriptor& dir,
+                                const char* filename,
+                                CompletionToken&& completion_token);
+    template <typename CompletionToken>
+    decltype(auto) async_openat(const char* filename, const open_how& h,
+                                CompletionToken&& completion_token);
+    template <typename CompletionToken>
+    decltype(auto) async_openat(const char* filename,
+                                CompletionToken&& completion_token);
 };
 }  // namespace chx::net
 

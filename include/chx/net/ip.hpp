@@ -212,14 +212,14 @@ class address {
         if (is_v4()) {
             return __M_addr.v4;
         } else {
-            throw std::bad_cast();
+            __CHXNET_THROW(EINVAL);
         }
     }
     address_v6 to_v6() const {
         if (is_v6()) {
             return __M_addr.v6;
         } else {
-            throw std::bad_cast();
+            __CHXNET_THROW(EINVAL);
         }
     }
 

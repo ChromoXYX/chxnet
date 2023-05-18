@@ -72,7 +72,7 @@ template <typename Protocol> class basic_socket {
     }
 
     bool is_open() const noexcept(true) {
-        return native_handler() != -1 &&
+        return native_handler() > 0 &&
                (::fcntl(native_handler(), F_GETFD) || errno != EBADF);
     }
 
