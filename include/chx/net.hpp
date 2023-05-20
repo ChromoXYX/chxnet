@@ -26,6 +26,7 @@
 #include "./net/udp.hpp"
 #include "./net/ktimer.hpp"
 #include "./net/async_read_until.hpp"
+#include "./net/async_read.hpp"
 #include "./net/file_descriptor.hpp"
 #include "./net/file.hpp"
 #include "./net/async_sendfile.hpp"

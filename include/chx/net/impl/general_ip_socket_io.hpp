@@ -20,7 +20,7 @@ struct read_until {
               StopCond(std::forward<SC>(sc)) {}
 
         template <typename Cntl> void operator()(Cntl& cntl) {
-            dyn_buf.extend(128);
+            dyn_buf.extend(StopCond::extend_size());
             socket.async_read_some(buffer(dyn_buf), cntl.next());
         }
 
@@ -40,8 +40,13 @@ struct read_until {
                     // nothing went wrong.
                     cntl.complete(ec, pos);
                 } else {
-                    dyn_buf.extend(128);
-                    socket.async_read_some(buffer(dyn_buf), cntl.next());
+                    dyn_buf.extend(StopCond::extend_size());
+                    if (dyn_buf.size()) {
+                        socket.async_read_some(buffer(dyn_buf), cntl.next());
+                    } else {
+                        // max size
+                        cntl.complete(ec, std::string_view::npos);
+                    }
                 }
             } else {
                 cntl.complete(ec, 0);
@@ -73,6 +78,8 @@ struct read_until {
             return r = str.find(pattern),
                    r != str.npos ? r + pattern.size() : r;
         }
+
+        constexpr std::size_t extend_size() noexcept(true) { return 128; }
     };
 
     struct stop_cond_char {
@@ -91,14 +98,18 @@ struct read_until {
             std::size_t r = str.npos;
             return r = str.find(c), r != str.npos ? r + 1 : r;
         }
+
+        constexpr std::size_t extend_size() noexcept(true) { return 128; }
     };
 
     template <typename T>
     constexpr static decltype(auto) make_stop_cond(T&& t) noexcept(true) {
         if constexpr (std::is_constructible_v<stop_cond_char, T&&>) {
             return stop_cond_char(std::forward<T>(t));
-        } else {
+        } else if constexpr (std::is_constructible_v<stop_cond, T&&>) {
             return stop_cond(std::forward<T>(t));
+        } else {
+            return std::forward<T>(t);
         }
     }
 };

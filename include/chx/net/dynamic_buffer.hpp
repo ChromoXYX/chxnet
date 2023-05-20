@@ -68,7 +68,7 @@ template <typename Container> class dynamic_buffer {
      */
     constexpr std::size_t max_size() const noexcept(true) { return __M_max_sz; }
 
-#define __CHXNET_TO_UC_PTR(ptr) \
+#define __CHXNET_TO_UC_PTR(ptr)                                                \
     static_cast<unsigned char*>(static_cast<void*>(ptr))
 
     /**
@@ -96,22 +96,15 @@ template <typename Container> class dynamic_buffer {
     void extend(std::size_t size) {
         if (size > __M_avail_sz) {
             size -= __M_avail_sz;
-        } else {
-            return;
-        }
-        if (__M_container.empty()) {
-            __M_container.resize(std::min(__M_max_sz, size));
-            __M_avail = __CHXNET_TO_UC_PTR(__M_container.data());
-            __M_avail_sz = __M_container.size();
-            return;
-        }
-        if (size + __M_container.size() <= __M_max_sz) {
-            std::size_t avail_pos = __M_container.size() - __M_avail_sz;
-            __M_container.resize(__M_container.size() + size);
-            __M_avail = __CHXNET_TO_UC_PTR(__M_container.data()) + avail_pos;
-            __M_avail_sz = __M_container.size() - avail_pos;
-        } else {
-            extend(__M_max_sz - __M_container.size());
+            if (size + __M_container.size() <= __M_max_sz) {
+                std::size_t avail_pos = __M_container.size() - __M_avail_sz;
+                __M_container.resize(__M_container.size() + size);
+                __M_avail =
+                    __CHXNET_TO_UC_PTR(__M_container.data()) + avail_pos;
+                __M_avail_sz = __M_container.size() - avail_pos;
+            } else {
+                extend(__M_max_sz - __M_container.size());
+            }
         }
     }
     /**
@@ -137,9 +130,6 @@ template <typename Container> class dynamic_buffer {
             __M_avail_sz = 0;
         }
     }
-    // old avail_pos implement
-    // static_cast<std::size_t>(std::distance(
-    //     __CHXNET_TO_UC_PTR(__M_container.data()), __M_avail))
 #undef __CHXNET_TO_UC_PTR
 };
 }  // namespace chx::net

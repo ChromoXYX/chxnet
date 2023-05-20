@@ -26,7 +26,7 @@ class bad_ssl_socket : public exception {
     using exception::exception;
 };
 
-template <typename Socket> class stream : protected Socket {
+template <typename Socket> class stream : public Socket {
     template <typename S> friend struct detail::meth;
     template <typename S, typename SSLOperation> friend struct detail::ssl_poll;
     template <typename Tag> friend struct net::detail::async_operation;
@@ -100,6 +100,9 @@ template <typename Socket> class stream : protected Socket {
     }
     constexpr int native_handler() const noexcept(true) {
         return Socket::native_handler();
+    }
+    constexpr Socket& lower_layer() noexcept(true) {
+        return static_cast<Socket&>(*this);
     }
 
     template <typename CompletionToken>
