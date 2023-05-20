@@ -17,6 +17,8 @@ struct session : std::enable_shared_from_this<session> {
             [self = shared_from_this()](const std::error_code& ec) {
                 if (!ec) {
                     self->do_read();
+                } else {
+                    std::cout << ec.message() << "\n";
                 }
             });
     }
@@ -62,8 +64,8 @@ struct server {
     server(net::io_context& ctx)
         : acceptor(ctx, net::ip::tcp::endpoint(net::ip::tcp::v4(), 4433)),
           ssl_ctx(net::ssl::context::tls_server) {
-        ssl_ctx.use_certificate_file("cert.pem", ssl_ctx.pem);
-        ssl_ctx.use_PrivateKey_file("key.pem", ssl_ctx.pem);
+        ssl_ctx.use_certificate_file("../cert.pem", ssl_ctx.pem);
+        ssl_ctx.use_PrivateKey_file("../key.pem", ssl_ctx.pem);
         // ssl_ctx.set_min_proto_version(ssl_ctx.tls1_2);
         // ssl_ctx.set_max_proto_version(ssl_ctx.tls1_2);
         // ssl_ctx.set_options(SSL_OP_ENABLE_KTLS);
@@ -87,9 +89,12 @@ int main(void) {
     signal(SIGPIPE, SIG_IGN);
 
     net::io_context ctx;
+
+    net::signal sig(ctx);
+    sig.add(SIGINT);
+    sig.async_wait([&](const std::error_code&, int) { ctx.stop(); });
+
     server s(ctx);
-    // server_echo s_echo(ctx);
-    // s_echo.do_accept();
     s.do_accept();
     ctx.run();
 }

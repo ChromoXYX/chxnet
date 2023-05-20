@@ -104,6 +104,9 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
             [this, func = std::forward<Func>(func)](
                 const std::error_code& ec) mutable { func(*this, ec); });
     }
+    constexpr std::size_t tracked_task_num() noexcept(true) {
+        return __M_subtasks.size();
+    }
 
     template <typename... Ts> decltype(auto) direct_invoke(Ts&&... ts) {
         return Operation::operator()(*this, std::forward<Ts>(ts)...);
@@ -145,8 +148,19 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
         }
     };
 
+    template <typename Tag> struct next_guard_with_tag : next_guard {
+        using next_guard::next_guard;
+
+        template <typename... Ts> void operator()(Ts&&... ts) {
+            return next_guard::operator()(std::forward<Ts>(ts)..., Tag());
+        }
+    };
+
     constexpr auto next() noexcept(true) {
         return task_aware(next_guard(this));
+    }
+    template <typename Tag> constexpr auto next_with_tag() noexcept(true) {
+        return task_aware(next_guard_with_tag<Tag>(this));
     }
 };
 template <typename CompletionToken, typename Operation, typename... OpArgs>

@@ -4,6 +4,7 @@
 
 namespace chx::net::detail::tags {
 struct use_poll {};
+struct ssl_submit {};
 }  // namespace chx::net::detail::tags
 
 template <>
@@ -14,4 +15,9 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::use_poll> {
         return sock.async_poll(events,
                                std::forward<CompletionToken>(completion_token));
     }
+};
+
+template <>
+struct chx::net::detail::async_operation<chx::net::detail::tags::ssl_submit> {
+    void operator()(io_context* ctx) { ctx->submit(); }
 };

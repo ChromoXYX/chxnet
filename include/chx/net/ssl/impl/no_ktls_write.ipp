@@ -1,12 +1,12 @@
 #pragma once
 
-#include "./ssl_rw_poll.hpp"
+#include "./ssl_no_ktls_rw.hpp"
 
 #include "../stream.hpp"
 
 template <typename Socket>
 template <typename ConstBuffer, typename CompletionToken>
-decltype(auto) chx::net::ssl::stream_ktls<Socket>::async_write_some(
+decltype(auto) chx::net::ssl::stream<Socket>::async_write_some(
     ConstBuffer&& buffer, CompletionToken&& completion_token,
     net::detail::sfinae_placeholder<
         std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>) {
@@ -23,7 +23,7 @@ decltype(auto) chx::net::ssl::stream_ktls<Socket>::async_write_some(
     return async_combine<const std::error_code&, std::size_t>(
         Socket::get_associated_io_context(),
         std::forward<CompletionToken>(completion_token),
-        net::detail::type_identity<chx::net::ssl::detail::ssl_rw_poll<
-            stream_ktls<Socket>, ssl_operation>>(),
+        net::detail::type_identity<chx::net::ssl::detail::ssl_no_ktls_rw<
+            stream<Socket>, ssl_operation>>(),
         this, buffer);
 }
