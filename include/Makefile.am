@@ -43,7 +43,6 @@ nobase_include_HEADERS = \
 ./chx/net/ssl/impl/ssl_poll.hpp \
 ./chx/net/ssl/impl/do_handshake.ipp \
 ./chx/net/ssl/impl/no_ktls_handshake.ipp \
-./chx/net/ssl/impl/meth.ipp \
 ./chx/net/ssl/impl/ssl_rw_poll.hpp \
 ./chx/net/ssl/impl/no_ktls_shutdown.ipp \
 ./chx/net/ssl/impl/read.ipp \

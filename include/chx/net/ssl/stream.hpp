@@ -13,11 +13,9 @@ class bad_meth : public exception {
 };
 
 template <typename Stream, typename SSLOperation> struct ssl_poll;
-template <typename Stream> struct meth;
-template <typename Stream> const BIO_METHOD* bio_custom_meth();
+
 template <typename Stream> struct no_ktls_meth;
 template <typename Stream> const BIO_METHOD* bio_custom_meth_without_ktls();
-
 template <typename Stream, typename SSLOperation> struct ssl_no_ktls;
 template <typename Stream, typename SSLOperation> struct ssl_no_ktls_rw;
 
@@ -31,14 +29,12 @@ class bad_ssl_socket : public exception {
     using exception::exception;
 };
 
-template <typename Socket> class stream_ktls : public Socket {
-    template <typename S> friend struct detail::meth;
+template <typename Socket> class stream : public Socket {
     template <typename S, typename SSLOperation> friend struct detail::ssl_poll;
     template <typename Tag> friend struct net::detail::async_operation;
 
     context* __M_context = nullptr;
     std::unique_ptr<SSL, detail::ssl_deleter> __M_ssl;
-    long __M_num = 0;
 
     void set_nonblock() {
         if (::fcntl(Socket::native_handler(), F_SETFL,
@@ -61,14 +57,13 @@ template <typename Socket> class stream_ktls : public Socket {
         } else {
             SSL_set_connect_state(get_associated_SSL());
         }
-        bio = BIO_new(detail::bio_custom_meth<stream_ktls>());
+        bio = BIO_new(BIO_s_socket());
         if (!bio) {
             goto error;
         }
         if (BIO_set_fd(bio, Socket::native_handler(), BIO_NOCLOSE) != 1) {
             goto error;
         }
-        BIO_set_data(bio, this);
         SSL_set_bio(get_associated_SSL(), bio, bio);
         return;
     error:
@@ -77,24 +72,14 @@ template <typename Socket> class stream_ktls : public Socket {
 
   public:
     template <typename... Args>
-    stream_ktls(context& ssl_context, Args&&... args)
+    stream(context& ssl_context, Args&&... args)
         : ip::tcp::socket(std::forward<Args>(args)...),
           __M_context(&ssl_context) {
         set_nonblock();
         set_ssl(get_associated_ssl_context().get_method());
     }
-    stream_ktls(stream_ktls&& other) noexcept(true)
-        : ip::tcp::socket(std::move(other)), __M_context(other.__M_context),
-          __M_ssl(std::move(other.__M_ssl)),
-          __M_num(std::exchange(other.__M_num, 0)) {
-        if (__M_ssl) {
-            auto* bio = SSL_get_wbio(get_associated_SSL());
-            if (bio) {
-                BIO_set_data(bio, this);
-            }
-        }
-    }
-    ~stream_ktls() = default;
+    stream(stream&& other) noexcept(true) = default;
+    ~stream() = default;
 
     constexpr context& get_associated_ssl_context() noexcept(true) {
         return *__M_context;
@@ -130,7 +115,7 @@ template <typename Socket> class stream_ktls : public Socket {
                         _ = net::detail::sfinae);
 };
 
-template <typename Socket> class stream : public Socket {
+template <typename Socket> class stream_noktls : public Socket {
     template <typename S> friend struct detail::no_ktls_meth;
     template <typename Tag> friend struct net::detail::async_operation;
     template <typename S, typename R> friend struct detail::ssl_no_ktls;
@@ -157,7 +142,7 @@ template <typename Socket> class stream : public Socket {
         } else {
             SSL_set_connect_state(get_associated_SSL());
         }
-        bio = BIO_new(detail::bio_custom_meth_without_ktls<stream>());
+        bio = BIO_new(detail::bio_custom_meth_without_ktls<stream_noktls>());
         if (!bio) {
             goto error;
         }
@@ -173,12 +158,12 @@ template <typename Socket> class stream : public Socket {
 
   public:
     template <typename... Args>
-    stream(context& ssl_context, Args&&... args)
+    stream_noktls(context& ssl_context, Args&&... args)
         : ip::tcp::socket(std::forward<Args>(args)...),
           __M_context(&ssl_context) {
         set_ssl(get_associated_ssl_context().get_method());
     }
-    stream(stream&& other) noexcept(true)
+    stream_noktls(stream_noktls&& other) noexcept(true)
         : ip::tcp::socket(std::move(other)), __M_context(other.__M_context),
           __M_ssl(std::move(other.__M_ssl)),
           __M_in_buf(std::move(other.__M_in_buf)),
@@ -190,7 +175,7 @@ template <typename Socket> class stream : public Socket {
             }
         }
     }
-    ~stream() = default;
+    ~stream_noktls() = default;
 
     constexpr context& get_associated_ssl_context() noexcept(true) {
         return *__M_context;
@@ -227,7 +212,6 @@ template <typename Socket> class stream : public Socket {
 };
 }  // namespace chx::net::ssl
 
-#include "./impl/meth.ipp"
 #include "./impl/no_ktls_meth.ipp"
 
 #include "./impl/do_handshake.ipp"

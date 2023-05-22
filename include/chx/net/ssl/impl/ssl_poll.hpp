@@ -15,8 +15,6 @@ struct ssl_poll : SSLOperation {
         : sock(s), SSLOperation(std::forward<Args>(args)...) {}
 
     using use_poll = net::detail::async_operation<net::detail::tags::use_poll>;
-    using use_delivery =
-        net::detail::async_operation<net::detail::tags::use_delivery>;
     Stream* const sock;
 
     template <typename Cntl> void perform(Cntl& cntl) {
@@ -31,23 +29,9 @@ struct ssl_poll : SSLOperation {
             } else if (code == SSL_ERROR_WANT_WRITE) {
                 return use_poll()(*sock, POLLOUT, cntl.next());
             } else if (code == SSL_ERROR_SYSCALL) {
-                int ec = errno;
-                return use_delivery().oper<const std::error_code&>(
-                    &sock->get_associated_io_context(),
-                    [ec](auto& token, io_context::task_t* self) mutable -> int {
-                        token(net::detail::make_ec(ec));
-                        return 0;
-                    },
-                    cntl.next());
+                return cntl.complete(net::detail::make_ec(errno));
             } else {
-                return use_delivery().oper<const std::error_code&>(
-                    &sock->get_associated_io_context(),
-                    [code](auto& token,
-                           io_context::task_t* self) mutable -> int {
-                        token(make_ssl_ec(code));
-                        return 0;
-                    },
-                    cntl.next());
+                return cntl.complete(make_ssl_ec(code));
             }
         }
     }
@@ -61,34 +45,14 @@ struct ssl_poll : SSLOperation {
                 return perform(cntl);
             } else {
                 if (revents & (POLLRDHUP | POLLHUP)) {
-                    return use_delivery().oper<const std::error_code&>(
-                        &sock->get_associated_io_context(),
-                        [](auto& token,
-                           io_context::task_t* self) mutable -> int {
-                            token(net::detail::make_ec(net::errc::eof));
-                            return 0;
-                        },
-                        cntl.next());
+                    return cntl.complete(net::detail::make_ec(errc::eof));
                 } else {
-                    return use_delivery().oper<const std::error_code&>(
-                        &sock->get_associated_io_context(),
-                        [](auto& token,
-                           io_context::task_t* self) mutable -> int {
-                            token(net::detail::make_ec(
-                                net::errc::internal_error));
-                            return 0;
-                        },
-                        cntl.next());
+                    return cntl.complete(
+                        net::detail::make_ec(errc::internal_error));
                 }
             }
         } else {
-            return use_delivery().oper<const std::error_code&>(
-                &sock->get_associated_io_context(),
-                [ec](auto& token, io_context::task_t* self) mutable -> int {
-                    token(ec);
-                    return 0;
-                },
-                cntl.next());
+            return cntl.complete(ec);
         }
     }
 
