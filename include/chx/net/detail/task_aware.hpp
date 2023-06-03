@@ -39,7 +39,8 @@ template <typename CompletionToken> struct task_aware {
         : completion_token(std::forward<CT>(r)) {}
 
     template <typename... S> decltype(auto) bind() {
-        return task_aware_ops(std::move(completion_token));
+        return task_aware_ops(
+            async_token_bind<S...>(std::move(completion_token)));
     }
 };
 template <typename CompletionToken>

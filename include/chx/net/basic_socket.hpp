@@ -63,7 +63,7 @@ template <typename Protocol> class basic_socket {
     }
 
     constexpr int native_handler() const noexcept(true) { return __M_fd; }
-
+    constexpr basic_socket& lowest_layer() noexcept(true) { return *this; }
     constexpr io_context& get_associated_io_context() const noexcept(true) {
         return const_cast<io_context&>(*__M_ctx);
     }
