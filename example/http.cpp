@@ -64,8 +64,8 @@ struct http_state_machine : std::enable_shared_from_this<http_state_machine> {
 
     void consume() {
         net_buf.clear();
-        net::async_read_until(sock,
-            net::dynamic_buffer(net_buf), "\r\n",
+        net::async_read_until(
+            sock, net::dynamic_buffer(net_buf), "\r\n",
             [self = shared_from_this()](const std::error_code& e,
                                         std::size_t s) {
                 if (!e) {
@@ -97,20 +97,18 @@ struct http_state_machine : std::enable_shared_from_this<http_state_machine> {
         resp[0].append(std::to_string(resp[1].size()));
         resp[0].append("\r\n\r\n");
 
-        static char response[] =
-            "HTTP/1.1 200 OK\r\nContent-Length: "
-            "11\r\nConnection: keep-alive\r\n\r\nHello World";
-        sock.async_write_some(resp, [self = shared_from_this()](
-                                   const std::error_code& e, std::size_t s) {
-            self->resp = {};
-            self->headers.clear();
-            if (e) {
-                std::cerr << "failed to response\n";
-            } else {
-                llhttp_reset(&self->parser);
-                self->consume();
-            }
-        });
+        sock.async_write_some(
+            resp, [self = shared_from_this()](const std::error_code& e,
+                                              std::size_t s) {
+                self->resp = {};
+                self->headers.clear();
+                if (e) {
+                    std::cerr << "failed to response\n";
+                } else {
+                    llhttp_reset(&self->parser);
+                    self->consume();
+                }
+            });
     }
 
     net::ip::tcp::socket sock;

@@ -23,8 +23,8 @@ struct has_data_impl {
  *
  */
 class mutable_buffer {
-    void* const __M_data = nullptr;
-    const std::size_t __M_sz = 0;
+    void* __M_data = nullptr;
+    std::size_t __M_sz = 0;
 
   public:
     constexpr mutable_buffer() noexcept(true) = default;
@@ -68,8 +68,8 @@ class mutable_buffer {
  *
  */
 class const_buffer {
-    const void* const __M_data = nullptr;
-    const std::size_t __M_sz = 0;
+    const void* __M_data = nullptr;
+    std::size_t __M_sz = 0;
 
   public:
     constexpr const_buffer() = default;

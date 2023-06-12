@@ -30,7 +30,7 @@ struct ssl_no_ktls : SSLOperation {
     }
 
     template <typename Cntl> void perform(Cntl& cntl) {
-        assert(cntl.tracked_task_num() == 0);
+        assert(cntl.tracked_task_empty());
         ERR_clear_error();
         int r = SSLOperation::operator()(sock->get_associated_SSL());
         if (r == 1) {
@@ -65,15 +65,15 @@ struct ssl_no_ktls : SSLOperation {
     template <typename Cntl>
     void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
         if (current_ec) {
-            if (cntl.tracked_task_num() == 0) {
+            if (cntl.tracked_task_empty()) {
                 cntl.complete(net::detail::make_ec(current_ec));
             }
         } else if (e) {
             current_ec = e.value();
-            if (cntl.tracked_task_num() == 0) {
+            if (cntl.tracked_task_empty()) {
                 cntl.complete(net::detail::make_ec(current_ec));
             }
-        } else if (cntl.tracked_task_num() == 0) {
+        } else if (cntl.tracked_task_empty()) {
             perform(cntl);
         }
     }
@@ -89,15 +89,15 @@ struct ssl_no_ktls : SSLOperation {
             sock->__M_in_buf.resize(s);
         }
         if (current_ec) {
-            if (cntl.tracked_task_num() == 0) {
+            if (cntl.tracked_task_empty()) {
                 cntl.complete(net::detail::make_ec(current_ec));
             }
         } else if (e) {
             current_ec = e.value();
-            if (cntl.tracked_task_num() == 0) {
+            if (cntl.tracked_task_empty()) {
                 cntl.complete(net::detail::make_ec(current_ec));
             }
-        } else if (cntl.tracked_task_num() == 0) {
+        } else if (cntl.tracked_task_empty()) {
             perform(cntl);
         }
     }

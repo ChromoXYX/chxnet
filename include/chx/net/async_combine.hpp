@@ -107,6 +107,9 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     constexpr std::size_t tracked_task_num() noexcept(true) {
         return __M_subtasks.size();
     }
+    constexpr bool tracked_task_empty() noexcept(true) {
+        return __M_subtasks.empty();
+    }
 
     template <typename... Ts> decltype(auto) direct_invoke(Ts&&... ts) {
         return Operation::operator()(*this, std::forward<Ts>(ts)...);
