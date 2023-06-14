@@ -41,6 +41,7 @@ class io_context : CHXNET_NONCOPYABLE {
   public:
     io_uring __M_ring;
     bool __M_stopped = false;
+    bool __M_destructing = false;
 
     struct __task_t : CHXNET_NONCOPYABLE {
         __task_t(io_context* p) noexcept(true) : __M_ctx(p) {}
@@ -240,7 +241,7 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     void __run() {
-        while (!is_stopped() && (__M_static_total || __M_dyn_total)) {
+        while (__M_static_total || __M_dyn_total) {
             if (int r = io_uring_submit_and_wait(&__M_ring, 1); r < 0) {
                 __CHXNET_THROW_WITH(-r, bad_io_context_exec);
             }
@@ -306,10 +307,21 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     void __async_cancel_all() {
-        auto* sqe = get_sqe();
-        io_uring_prep_cancel(sqe, nullptr, IORING_ASYNC_CANCEL_ANY);
-        sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
-        io_uring_sqe_set_data(sqe, nullptr);
+        // auto* sqe = get_sqe();
+        // io_uring_prep_cancel(sqe, nullptr, IORING_ASYNC_CANCEL_ANY);
+        // sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
+        // io_uring_sqe_set_data(sqe, nullptr);
+        for (std::size_t idx = 0; idx < __M_static_task_sz; ++idx) {
+            if (!__M_static_task_queue[idx].__M_avail) {
+                auto* sqe = get_sqe();
+                io_uring_prep_cancel(sqe, &__M_static_task_queue[idx],
+                                     IORING_ASYNC_CANCEL_ALL);
+            }
+        }
+        for (auto& ptr : __M_dynamic_task_queue) {
+            auto* sqe = get_sqe();
+            io_uring_prep_cancel(sqe, ptr.get(), IORING_ASYNC_CANCEL_ALL);
+        }
     }
 
   public:
@@ -358,8 +370,9 @@ class io_context : CHXNET_NONCOPYABLE {
      *
      */
     ~io_context() {
+        __M_destructing = true;
         try {
-            if ((__M_static_total || !__M_dynamic_task_queue.empty())) {
+            while ((__M_static_total || !__M_dynamic_task_queue.empty())) {
                 __async_cancel_all();
                 __run();
             }
@@ -382,7 +395,11 @@ class io_context : CHXNET_NONCOPYABLE {
      * async task is undefined behavior.
      *
      */
-    void run() { __run(); }
+    void run() {
+        if (!is_stopped()) {
+            __run();
+        }
+    }
 
     /**
      * @brief Stop handling the completion of async tasks;

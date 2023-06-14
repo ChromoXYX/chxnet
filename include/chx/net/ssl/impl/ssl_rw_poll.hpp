@@ -38,7 +38,14 @@ struct ssl_rw_poll : SSLOperation {
         }
     }
 
-    template <typename Cntl> void operator()(Cntl& cntl) { perform(cntl); }
+    template <typename Cntl> void operator()(Cntl& cntl) {
+        if (!sock->get_associated_io_context().__M_destructing) {
+            perform(cntl);
+        } else {
+            cntl.complete(net::detail::make_ec(net::errc::operation_canceled),
+                          0);
+        }
+    }
 
     template <typename Cntl>
     void operator()(Cntl& cntl, const std::error_code& ec, int revents) {

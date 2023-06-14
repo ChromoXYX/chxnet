@@ -45,7 +45,6 @@ AC_ARG_WITH([liburing],
 ]
 )
 
-: ${CXXFLAGS="-O3"}
 AC_PROG_CXX
 dnl AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
 AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])

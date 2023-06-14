@@ -18,7 +18,7 @@ struct session : std::enable_shared_from_this<session> {
                 if (!ec) {
                     self->do_read();
                 } else {
-                    std::cout << ec.message() << "\n";
+                    std::cout << "handshake\t" << ec.message() << "\n";
                 }
             });
     }
@@ -27,10 +27,12 @@ struct session : std::enable_shared_from_this<session> {
         buf.clear();
         net::async_read_until(sock, net::dynamic_buffer(buf), "\r\n\r\n",
                               [self = shared_from_this()](
-                                  const std::error_code& e, std::size_t s) {
-                                  if (!e) {
+                                  const std::error_code& ec, std::size_t s) {
+                                  if (!ec) {
                                       self->do_write();
                                   } else {
+                                      std::cout << "read\t" << ec.message()
+                                                << "\n";
                                       self->do_shutdown();
                                   }
                               });
@@ -42,10 +44,12 @@ struct session : std::enable_shared_from_this<session> {
             "keep-alive\r\n\r\nHello World";
         sock.async_write_some(net::buffer(reply, strlen(reply)),
                               [self = shared_from_this()](
-                                  const std::error_code& e, std::size_t s) {
-                                  if (!e) {
+                                  const std::error_code& ec, std::size_t s) {
+                                  if (!ec) {
                                       self->do_read();
                                   } else {
+                                      std::cout << "write\t" << ec.message()
+                                                << "\n";
                                       self->do_shutdown();
                                   }
                               });
@@ -53,7 +57,9 @@ struct session : std::enable_shared_from_this<session> {
 
     void do_shutdown() {
         sock.async_shutdown(
-            [self = shared_from_this()](const std::error_code& e) {});
+            [self = shared_from_this()](const std::error_code& ec) {
+                std::cout << "shutdown\t" << ec.message() << "\n";
+            });
     }
 };
 
@@ -77,10 +83,10 @@ struct server {
                 if (!ec) {
                     std::make_shared<session>(ssl_ctx, std::move(sock))
                         ->do_handshake();
+                    do_accept();
                 } else {
-                    std::cerr << ec.message() << "\n";
+                    std::cerr << "accept\t" << ec.message() << "\n";
                 }
-                do_accept();
             });
     }
 };
