@@ -268,6 +268,7 @@ class io_context : CHXNET_NONCOPYABLE {
                         try {
                             task->__M_token(task);
                         } catch (...) {
+                            release(task);
                             std::rethrow_exception(std::current_exception());
                         }
                     } else {
@@ -287,9 +288,7 @@ class io_context : CHXNET_NONCOPYABLE {
                             try {
                                 task->__M_token(task);
                             } catch (...) {
-                                if (_need_release) {
-                                    release(task);
-                                }
+                                release(task);
                                 std::rethrow_exception(
                                     std::current_exception());
                             }

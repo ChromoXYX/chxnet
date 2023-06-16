@@ -30,3 +30,4 @@
 #include "./net/file_descriptor.hpp"
 #include "./net/file.hpp"
 #include "./net/async_sendfile.hpp"
+#include "./net/managed.hpp"

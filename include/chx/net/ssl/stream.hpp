@@ -113,16 +113,6 @@ template <typename Socket> class stream : public Socket {
                     net::detail::sfinae_placeholder<std::enable_if_t<
                         net::detail::is_mutable_buffer<MutableBuffer>::value>>
                         _ = net::detail::sfinae);
-
-    template <typename ConstBufferSequence, typename CompletionToken>
-    [[deprecated("bad performance, use ktls instead")]] decltype(auto)
-    async_write_some(
-        ConstBufferSequence&& const_buffer_sequence,
-        CompletionToken&& completion_token,
-        net::detail::sfinae_placeholder<
-            std::enable_if_t<is_const_buffer_sequence<
-                std::remove_reference_t<ConstBufferSequence>>::value>>
-            _ = net::detail::sfinae);
 };
 }  // namespace chx::net::ssl
 
