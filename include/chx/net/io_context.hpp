@@ -10,6 +10,8 @@
 #include "./detail/noncopyable.hpp"
 #include "./error_code.hpp"
 
+#include <cstdint>
+
 #ifndef CHXNET_TOKEN_STORAGE_SIZE
 #define CHXNET_TOKEN_STORAGE_SIZE 48
 #endif
