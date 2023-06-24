@@ -9,6 +9,7 @@ chx/net/async_sendfile.hpp \
 chx/net/exception.hpp \
 chx/net/ktimer.hpp \
 chx/net/async_combine.hpp \
+chx/net/async_write_sequence.hpp \
 chx/net/udp.hpp \
 chx/net/detached.hpp \
 chx/net/signal.hpp \
@@ -41,6 +42,7 @@ chx/net/impl/tcp_acceptor.ipp \
 chx/net/impl/async_write_some_managed.ipp \
 chx/net/impl/async_read.ipp \
 chx/net/impl/async_read_until.ipp \
+chx/net/impl/async_write_sequence.ipp \
 chx/net/ssl/error_code.hpp \
 chx/net/ssl/ssl.hpp \
 chx/net/ssl/stream.hpp \

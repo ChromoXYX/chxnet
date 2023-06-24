@@ -31,3 +31,4 @@
 #include "./net/file.hpp"
 #include "./net/async_sendfile.hpp"
 #include "./net/managed.hpp"
+#include "./net/async_write_sequence.hpp"

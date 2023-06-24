@@ -140,6 +140,12 @@ auto buffer(Obj&& obj, std::size_t size) noexcept(true) {
     }
 }
 
+template <typename T>
+using is_buffer =
+    std::integral_constant<bool,
+                           std::is_constructible_v<const_buffer, T> ||
+                               std::is_constructible_v<mutable_buffer, T>>;
+
 namespace detail {
 template <typename Buffer>
 using is_const_buffer = std::is_convertible<Buffer, const_buffer>;
