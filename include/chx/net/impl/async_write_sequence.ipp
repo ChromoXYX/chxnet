@@ -79,29 +79,55 @@ template <> struct async_operation<tags::async_write_seq> {
         return std::false_type{};
     }
 
-    template <typename T>
-    constexpr static std::size_t iov_static_size(
-        T&& t,
-        sfinae_placeholder<
-            std::enable_if_t<is_buffer<std::decay_t<T>>::value>,
-            std::enable_if_t<
-                std::is_same_v<std::decay_t<decltype(t[0])>, char> ||
-                std::is_same_v<std::decay_t<decltype(t[0])>, unsigned char>>>
-            _ = sfinae) {
-        return 1;
-    }
-
-    template <typename T, std::size_t... Idx>
-    constexpr static std::size_t
-    array_traverse(T&& t, std::integer_sequence<std::size_t, Idx...>) {
-        return (iov_static_size(t[Idx]) + ...);
-    }
-
     template <typename> struct arr_N;
     template <typename T, std::size_t N>
     struct arr_N<T[N]> : std::integral_constant<std::size_t, N> {};
     template <typename T, std::size_t N>
     struct arr_N<std::array<T, N>> : std::integral_constant<std::size_t, N> {};
+
+    template <typename T>
+    constexpr static auto iov_constexpr_size(
+        sfinae_placeholder<std::enable_if_t<is_atom<T&&>::value>> _ = sfinae) {
+        return std::integral_constant<std::size_t, 1>();
+    }
+    template <typename T>
+    constexpr static auto iov_constexpr_size(
+        sfinae_placeholder<
+            std::enable_if_t<is_cpp_array<std::decay_t<T>>::value ||
+                             std::is_array_v<std::remove_reference_t<T>>>>
+            _ = sfinae) {
+        return std::integral_constant<
+            std::size_t,
+            iov_constexpr_size<
+                std::remove_reference_t<decltype(std::declval<T>()[0])>>()
+                    .value *
+                arr_N<std::remove_const_t<std::remove_reference_t<T&&>>>::
+                    value>();
+    }
+    template <typename Tp, std::size_t... Idx>
+    constexpr static auto
+    traverse_tp_constexpr(std::integer_sequence<std::size_t, Idx...>) {
+        return std::integral_constant<std::size_t,
+                                      (iov_constexpr_size<std::tuple_element_t<
+                                           Idx, std::remove_reference_t<Tp>>>()
+                                           .value +
+                                       ...)>();
+    }
+    template <typename T>
+    constexpr static auto iov_constexpr_size(
+        sfinae_placeholder<std::enable_if_t<is_tuple<std::decay_t<T>>::value>>
+            _ = sfinae) {
+        return traverse_tp_constexpr<T>(
+            std::make_integer_sequence<
+                std::size_t, std::tuple_size_v<std::remove_reference_t<T>>>());
+    }
+
+    template <typename T>
+    constexpr static std::size_t iov_static_size(
+        T&& t,
+        sfinae_placeholder<std::enable_if_t<is_atom<T&&>::value>> _ = sfinae) {
+        return 1;
+    }
 
     template <typename T>
     constexpr static std::size_t iov_static_size(
@@ -110,11 +136,12 @@ template <> struct async_operation<tags::async_write_seq> {
             std::enable_if_t<is_cpp_array<std::decay_t<T>>::value ||
                              std::is_array_v<std::remove_reference_t<T>>>>
             _ = sfinae) {
-        return array_traverse(
-            std::forward<T>(t),
-            std::make_integer_sequence<
-                std::size_t, arr_N<std::remove_const_t<
-                                 std::remove_reference_t<T&&>>>::value>());
+        // change array[0:n] to for
+        std::size_t r = 0;
+        for (auto& i : t) {
+            r += iov_static_size(i);
+        }
+        return r;
     }
 
     template <typename T>
@@ -196,7 +223,7 @@ template <> struct async_operation<tags::async_write_seq> {
     template <typename T> static auto fill_iov(T&& t) {
         using cond = decltype(traverse(std::forward<T>(t)));
         if constexpr (cond::value) {
-            constexpr std::size_t n = iov_static_size(std::forward<T>(t));
+            constexpr std::size_t n = iov_constexpr_size<T>().value;
             std::array<struct iovec, n> a;
             struct iovec* ptr = a.data();
             arr_fill(std::forward<T>(t), ptr);

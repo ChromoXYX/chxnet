@@ -35,6 +35,7 @@ chx/net/detail/noncopyable.hpp \
 chx/net/impl/udp_socket.ipp \
 chx/net/impl/tcp_socket.ipp \
 chx/net/impl/file_descriptor.ipp \
+chx/net/impl/async_write_sequence_managed.ipp \
 chx/net/impl/file.ipp \
 chx/net/impl/general_ip_socket_io.hpp \
 chx/net/impl/io_context.ipp \
