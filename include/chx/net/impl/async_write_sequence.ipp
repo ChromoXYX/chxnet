@@ -267,10 +267,11 @@ template <> struct async_operation<tags::async_write_seq> {
         decltype(auto) generate_token(io_context::task_t* t,
                                       FinalFunctor&& final_functor) {
             task = t;
-            return write_seq2(fill_iov(std::forward<SequenceRef>(sequence_ref)),
-                              async_token_generate(
-                                  t, std::forward<FinalFunctor>(final_functor),
-                                  bind_completion_token));
+            return write_seq2(
+                fill_iov(std::forward<SequenceRef>(sequence_ref)),
+                async_token_generate(
+                    t, std::forward<FinalFunctor>(final_functor),
+                    std::forward<BindCompletionToken>(bind_completion_token)));
         }
 
         template <typename TypeIdentity>
@@ -280,13 +281,13 @@ template <> struct async_operation<tags::async_write_seq> {
                 task->get_underlying_data());
             io_uring_prep_writev(sqe, fd, d->flat_sequence.data(),
                                  d->flat_sequence.size(), 0);
-            return async_token_init(ti, bind_completion_token);
+            return async_token_init(
+                ti, std::forward<BindCompletionToken>(bind_completion_token));
         }
     };
     template <typename SequenceRef, typename BindCompletionToken>
     write_seq1(BindCompletionToken&&, SequenceRef&&, int)
-        -> write_seq1<SequenceRef&&,
-                      std::remove_reference_t<BindCompletionToken>>;
+        -> write_seq1<SequenceRef&&, BindCompletionToken&&>;
 
     template <typename CompletionToken>
     decltype(auto) operator()(io_context* ctx,

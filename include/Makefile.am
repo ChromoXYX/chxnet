@@ -21,6 +21,7 @@ chx/net/file.hpp \
 chx/net/io_context.hpp \
 chx/net/managed.hpp \
 chx/net/as_tuple.hpp \
+chx/net/async_openat.hpp \
 chx/net/dynamic_buffer.hpp \
 chx/net/buffer_sequence.hpp \
 chx/net/file_descriptor.hpp \
@@ -32,6 +33,7 @@ chx/net/detail/basic_token_storage.hpp \
 chx/net/detail/sfinae_placeholder.hpp \
 chx/net/detail/task_aware.hpp \
 chx/net/detail/noncopyable.hpp \
+chx/net/impl/async_openat.ipp \
 chx/net/impl/udp_socket.ipp \
 chx/net/impl/tcp_socket.ipp \
 chx/net/impl/file_descriptor.ipp \
