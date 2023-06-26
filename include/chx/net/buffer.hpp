@@ -15,6 +15,9 @@ struct has_data_impl {
     template <typename T, typename = decltype(std::declval<T>().data())>
     has_data_impl(T) {}
 };
+template <typename T>
+using is_const_data =
+    std::is_const<std::remove_pointer_t<decltype(std::declval<T>().data())>>;
 }  // namespace detail
 
 /**
@@ -43,17 +46,21 @@ class mutable_buffer {
                                       std::size_t size) noexcept(true)
         : __M_data(b), __M_sz(size) {}
 
-    template <typename Container,
-              typename = std::enable_if_t<std::is_constructible_v<
-                  detail::has_data_and_size_impl, Container>>,
-              typename = std::enable_if_t<!std::is_const<Container>::value>>
+    template <
+        typename Container,
+        typename = std::enable_if_t<
+            std::is_constructible_v<detail::has_data_and_size_impl, Container>>,
+        typename = std::enable_if_t<!std::is_const<Container>::value>,
+        typename = std::enable_if_t<!detail::is_const_data<Container>::value>>
     explicit mutable_buffer(Container& b) noexcept(true)
         : __M_data(b.data()),
           __M_sz(b.size() * sizeof(typename Container::value_type)) {}
-    template <typename Container,
-              typename = std::enable_if_t<
-                  std::is_constructible_v<detail::has_data_impl, Container>>,
-              typename = std::enable_if_t<!std::is_const<Container>::value>>
+    template <
+        typename Container,
+        typename = std::enable_if_t<
+            std::is_constructible_v<detail::has_data_impl, Container>>,
+        typename = std::enable_if_t<!std::is_const<Container>::value>,
+        typename = std::enable_if_t<!detail::is_const_data<Container>::value>>
     explicit mutable_buffer(Container& b, std::size_t size) noexcept(true)
         : __M_data(b.data()), __M_sz(size) {}
 

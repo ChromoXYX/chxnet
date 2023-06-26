@@ -86,6 +86,7 @@ struct http_state_machine : std::enable_shared_from_this<http_state_machine> {
     void complete() {
         completed = true;
 
+        std::array<std::string, 2> resp;
         resp[0] =
             "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: ";
         for (auto& [k, v] : headers) {
@@ -97,10 +98,10 @@ struct http_state_machine : std::enable_shared_from_this<http_state_machine> {
         resp[0].append(std::to_string(resp[1].size()));
         resp[0].append("\r\n\r\n");
 
-        sock.async_write_some(
-            resp, [self = shared_from_this()](const std::error_code& e,
-                                              std::size_t s) {
-                self->resp = {};
+        net::async_write_sequence_managed(
+            sock, std::move(resp),
+            [self = shared_from_this()](const std::error_code& e,
+                                        std::size_t s) {
                 self->headers.clear();
                 if (e) {
                     std::cerr << "failed to response\n";
@@ -113,8 +114,6 @@ struct http_state_machine : std::enable_shared_from_this<http_state_machine> {
 
     net::ip::tcp::socket sock;
     std::string net_buf;
-
-    std::array<std::string, 2> resp;
 };
 
 struct server {

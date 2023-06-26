@@ -42,7 +42,8 @@ template <> struct async_operation<tags::async_combine_use_delivery> {
     }
 };
 
-template <typename Operation, typename CompletionToken>
+template <typename Operation, typename CompletionToken,
+          typename EnableReferenceCount = std::false_type>
 struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     using attribute_type = attribute<async_token>;
 
@@ -71,6 +72,21 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
             next());
         // direct_invoke();
     }
+    template <typename OpType, typename... OpArgs, typename C>
+    constexpr async_combine_impl(std::true_type, io_context::task_t* task,
+                                 C&& c, type_identity<OpType>, OpArgs&&... args)
+        : __M_associated_task(task), Operation(std::forward<OpArgs>(args)...),
+          CompletionToken(std::forward<C>(c)) {
+        async_operation<tags::async_combine_use_delivery>()(
+            &get_associated_io_context(),
+            [](auto& token, io_context::task_t* self) mutable -> int {
+                if (!self->__M_ec) {
+                    token();
+                }
+                return 0;
+            },
+            next());
+    }
 
     int operator()(io_context::task_t*) {
         for (auto t : __M_subtasks) {
@@ -93,11 +109,16 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     }
     // this should be the last fn call of this object.
     template <typename... Ts> decltype(auto) complete(Ts&&... ts) {
+        static_assert(!EnableReferenceCount::value);
         if (!__M_subtasks.empty()) {
             __CHXNET_THROW(EINVAL);
         }
         CompletionToken::operator()(std::forward<Ts>(ts)...);
         async_operation<tags::async_combine_persist>()(get_associated_task());
+    }
+    template <typename... Ts> decltype(auto) no_release_complete(Ts&&... ts) {
+        static_assert(EnableReferenceCount::value);
+        CompletionToken::operator()(std::forward<Ts>(ts)...);
     }
     template <typename Func> void async_nop(Func&& func) {
         __M_associated_task->get_associated_io_context().async_nop(
@@ -134,6 +155,12 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
         template <typename... Ts> void operator()(Ts&&... ts) {
             release_and_remove();
             self->direct_invoke(std::forward<Ts>(ts)...);
+            if constexpr (EnableReferenceCount::value) {
+                if (self->tracked_task_empty()) {
+                    async_operation<tags::async_combine_persist>()(
+                        self->get_associated_task());
+                }
+            }
         }
 
         void release_and_remove() {
@@ -143,11 +170,13 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
             task = nullptr;
         }
         ~next_guard() {
-            if (task) {
-                self->__M_subtasks.erase(std::find(self->__M_subtasks.begin(),
-                                                   self->__M_subtasks.end(),
-                                                   task));
-            }
+            // it's not possible to figure out whether the async_combine_impl
+            // still exists.
+            // if (task) {
+            //     self->__M_subtasks.erase(std::find(self->__M_subtasks.begin(),
+            //                                        self->__M_subtasks.end(),
+            //                                        task));
+            // }
         }
     };
 
@@ -193,11 +222,11 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
             task = nullptr;
         }
         ~next_then_2() {
-            if (task) {
-                self->__M_subtasks.erase(std::find(self->__M_subtasks.begin(),
-                                                   self->__M_subtasks.end(),
-                                                   task));
-            }
+            // if (task) {
+            //     self->__M_subtasks.erase(std::find(self->__M_subtasks.begin(),
+            //                                        self->__M_subtasks.end(),
+            //                                        task));
+            // }
         }
     };
     template <typename T>
@@ -260,6 +289,12 @@ async_combine_impl(io_context::task_t*, CompletionToken&&,
                    type_identity<Operation>, OpArgs&&...)
     -> async_combine_impl<std::remove_reference_t<Operation>,
                           std::remove_reference_t<CompletionToken>>;
+template <typename CompletionToken, typename Operation, typename... OpArgs>
+async_combine_impl(std::true_type, io_context::task_t*, CompletionToken&&,
+                   type_identity<Operation>, OpArgs&&...)
+    -> async_combine_impl<std::remove_reference_t<Operation>,
+                          std::remove_reference_t<CompletionToken>,
+                          std::true_type>;
 
 namespace tags {
 struct combine {};
@@ -289,6 +324,29 @@ template <> struct async_operation<tags::combine> {
                 opt, std::forward<OpArgs>(args)...),
             completion_token);
     }
+    template <typename Operation, typename... OpArgs, typename CompletionToken>
+    decltype(auto) ref_count(io_context& ctx,
+                             CompletionToken&& completion_token,
+                             type_identity<Operation> opt, OpArgs&&... args) {
+        io_context::task_t* task = ctx.acquire();
+
+        task->__M_persist = true;
+        task->__M_cancel_invoke = true;
+        using __ctad_type = decltype(detail::async_combine_impl(
+            std::true_type{}, task,
+            std::move(detail::async_token_generate(
+                task, __CHXNET_FAKE_FINAL_FUNCTOR(),
+                completion_token)(nullptr)),
+            opt, std::forward<OpArgs>(args)...));
+        return detail::async_token_init(
+            task->__M_token.emplace<__ctad_type>(
+                detail::inplace, std::true_type{}, task,
+                std::move(detail::async_token_generate(
+                    task, __CHXNET_FAKE_FINAL_FUNCTOR(),
+                    completion_token)(nullptr)),
+                opt, std::forward<OpArgs>(args)...),
+            completion_token);
+    }
 };
 
 }  // namespace detail
@@ -312,6 +370,18 @@ decltype(auto)
 async_combine(io_context& ctx, CompletionToken&& completion_token,
               detail::type_identity<Operation> opt, OpArgs&&... args) {
     return detail::async_operation<detail::tags::combine>()(
+        ctx,
+        detail::async_token_bind<Signature...>(
+            std::forward<CompletionToken>(completion_token)),
+        opt, std::forward<OpArgs>(args)...);
+}
+
+template <typename... Signature, typename Operation, typename... OpArgs,
+          typename CompletionToken>
+decltype(auto) async_combine_reference_count(
+    io_context& ctx, CompletionToken&& completion_token,
+    detail::type_identity<Operation> opt, OpArgs&&... args) {
+    return detail::async_operation<detail::tags::combine>().ref_count(
         ctx,
         detail::async_token_bind<Signature...>(
             std::forward<CompletionToken>(completion_token)),

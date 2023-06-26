@@ -51,7 +51,7 @@ template <> struct async_operation<tags::write_seq_managed> {
         }
         template <typename Cntl>
         void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
-            cntl.complete(e, s);
+            cntl.no_release_complete(e, s);
         }
     };
     template <typename Stream, typename Sequence>
@@ -71,7 +71,7 @@ chx::net::async_write_sequence_managed(Stream&& stream, Sequence&& sequence,
         decltype(detail::async_operation<detail::tags::write_seq_managed>::
                      operation(std::forward<Stream>(stream),
                                std::forward<Sequence>(sequence)));
-    return async_combine<const std::error_code&, std::size_t>(
+    return async_combine_reference_count<const std::error_code&, std::size_t>(
         stream.get_associated_io_context(),
         std::forward<CompletionToken>(completion_token),
         detail::type_identity<operation_type>(), std::forward<Stream>(stream),
