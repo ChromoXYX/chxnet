@@ -36,6 +36,7 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
 
     cancellation_signal() = default;
     cancellation_signal(cancellation_signal&&) = default;
+    cancellation_signal& operator=(cancellation_signal&&) = default;
 
     void emit() {
         if (__M_op) {
