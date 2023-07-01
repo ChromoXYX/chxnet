@@ -40,6 +40,8 @@ class ktimer : CHXNET_NONCOPYABLE {
             __CHXNET_THROW_WITH(errno, bad_ktimer);
         }
     }
+    ktimer(ktimer&& other) noexcept(true)
+        : __M_ctx(other.__M_ctx), __M_fd(std::exchange(other.__M_fd, -1)) {}
     ~ktimer() {
         if (is_open()) {
             ::close(native_handler());
