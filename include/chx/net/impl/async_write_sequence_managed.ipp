@@ -51,7 +51,7 @@ template <> struct async_operation<tags::write_seq_managed> {
         }
         template <typename Cntl>
         void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
-            cntl.no_release_complete(e, s);
+            cntl.complete(e, s);
         }
     };
     template <typename Stream, typename Sequence>
