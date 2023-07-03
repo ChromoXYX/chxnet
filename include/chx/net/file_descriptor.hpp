@@ -8,7 +8,7 @@ namespace chx::net {
 class file_descriptor : CHXNET_NONCOPYABLE {
     template <typename> friend struct detail::async_operation;
 
-    io_context* const __M_ctx;
+    io_context* __M_ctx;
     int __M_fd = -1;
 
   public:
@@ -16,6 +16,16 @@ class file_descriptor : CHXNET_NONCOPYABLE {
         : __M_ctx(&ctx), __M_fd(fd) {}
     file_descriptor(file_descriptor&& other) noexcept(true)
         : __M_ctx(other.__M_ctx), __M_fd(std::exchange(other.__M_fd, -1)) {}
+
+    constexpr file_descriptor&
+    operator=(file_descriptor&& other) noexcept(true) {
+        if (this == &other) {
+            return *this;
+        }
+        __M_ctx = other.__M_ctx;
+        __M_fd = std::exchange(other.__M_fd, -1);
+        return *this;
+    }
 
     ~file_descriptor() noexcept(true) {
         if (is_open()) {

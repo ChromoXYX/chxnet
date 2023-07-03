@@ -8,6 +8,7 @@ namespace chx::net {
 class file : public file_descriptor {
   public:
     using file_descriptor::file_descriptor;
+    using file_descriptor::operator=;
 
     file(io_context& ctx, const char* filename, int flags = O_RDONLY,
          int mode = 0)
