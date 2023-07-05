@@ -1,6 +1,6 @@
 #pragma once
 
-#ifdef CHXNET_ENABLE_COROUTINE
+// #ifdef CHXNET_ENABLE_COROUTINE
 
 // #ifndef CHXNET_ENABLE_CORO_WHEN_ANY
 // #define CHXNET_ENABLE_CORO_WHEN_ANY 0
@@ -45,8 +45,22 @@ inline void deliver_exception(io_context* ctx, std::exception_ptr ex) {
         [ex](const std::error_code& ec) { std::rethrow_exception(ex); });
 }
 
+struct coro_then_base {
+    virtual void f() = 0;
+    virtual ~coro_then_base() = default;
+};
+inline void deliver_coro_then(io_context* ctx,
+                              std::unique_ptr<coro_then_base> p) {
+    ctx->async_nop([p = std::move(p)](const std::error_code& e) { p->f(); });
+}
+
 template <typename T> class task_impl {
     struct promise {
+        ~promise() {
+            if (__M_then)
+                deliver_coro_then(__M_ctx, std::move(__M_then));
+        }
+        std::unique_ptr<coro_then_base> __M_then;
         T __M_v;
         io_context* __M_ctx = nullptr;
 
@@ -113,6 +127,11 @@ template <typename T> class task_impl {
 };
 template <> class task_impl<void> {
     struct promise {
+        ~promise() {
+            if (__M_then)
+                deliver_coro_then(__M_ctx, std::move(__M_then));
+        }
+        std::unique_ptr<coro_then_base> __M_then;
         io_context* __M_ctx = nullptr;
 
         constexpr std::suspend_always initial_suspend() noexcept(true) {
@@ -607,14 +626,24 @@ operator()(io_context* ctx, Task&& coro, CompletionToken&& completion_token) {
             [coro = std::remove_reference_t<Task>(std::move(coro))](
                 auto& token, io_context::__task_t* self) mutable -> int {
                 if (!self->__M_ec) {
+                    struct then : coroutine::coro_then_base {
+                        then(std::remove_reference_t<decltype(token)>&& _t)
+                            : t(std::move(_t)) {}
+                        std::remove_reference_t<decltype(token)> t;
+                        void f() override {
+                            t(std::error_code{});
+                        }
+                    };
+                    coro.promise().__M_then.reset(new then(std::move(token)));
                     coro.resume();
                     coro.release();
+                } else {
+                    token(self->__M_ec);
                 }
-                token(self->__M_ec);
                 return 0;
             },
             std::forward<CompletionToken>(completion_token))),
         std::forward<CompletionToken>(completion_token));
 }
 
-#endif
+// #endif

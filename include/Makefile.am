@@ -22,6 +22,7 @@ chx/net/io_context.hpp \
 chx/net/managed.hpp \
 chx/net/as_tuple.hpp \
 chx/net/async_openat.hpp \
+chx/net/utility.hpp \
 chx/net/dynamic_buffer.hpp \
 chx/net/buffer_sequence.hpp \
 chx/net/file_descriptor.hpp \

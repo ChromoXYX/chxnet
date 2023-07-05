@@ -189,16 +189,11 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     }
 
     template <typename GeneratedToken>
-    struct next_then_2 : CHXNET_NONCOPYABLE, GeneratedToken {
-        template <typename T>
-        next_then_2(async_combine_impl* p, io_context::task_t* pt, T&& t)
-            : self(p), task(pt), GeneratedToken(std::forward<T>(t)) {
-            self->__M_subtasks.push_back(task);
-        }
-        next_then_2(next_then_2&& other)
-            : self(std::exchange(other.self, nullptr)),
-              task(std::exchange(other.task, nullptr)),
-              GeneratedToken(static_cast<GeneratedToken&&>(other)) {}
+    struct next_then_callable : GeneratedToken {
+        template <typename GT>
+        next_then_callable(async_combine_impl* s, io_context::task_t* t,
+                           GT&& gt)
+            : GeneratedToken(std::forward<GT>(gt)), self(s), task(t) {}
 
         async_combine_impl* self = nullptr;
         io_context::task_t* task = nullptr;
@@ -215,9 +210,26 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
             task = nullptr;
         }
     };
-    template <typename T>
-    next_then_2(async_combine_impl*, io_context::task_t*, T&&)
-        -> next_then_2<std::remove_reference_t<T&&>>;
+    template <typename GT>
+    next_then_callable(async_combine_impl*, io_context::task_t*, GT&&)
+        -> next_then_callable<std::remove_reference_t<GT>>;
+
+    template <typename FinalFunctor, typename Callable>
+    struct next_then_2 : FinalFunctor, Callable {
+        template <typename FF, typename C>
+        next_then_2(FF&& ff, C&& c)
+            : FinalFunctor(std::forward<FF>(ff)), Callable(std::forward<C>(c)) {
+        }
+        next_then_2(next_then_2&&) = default;
+
+        decltype(auto) operator()(io_context::task_t* t) {
+            return FinalFunctor::operator()(static_cast<Callable&>(*this), t);
+        }
+    };
+    template <typename FinalFunctor, typename Callable>
+    next_then_2(FinalFunctor&&, Callable&&)
+        -> next_then_2<std::remove_reference_t<FinalFunctor>,
+                       std::remove_reference_t<Callable>>;
 
     template <typename BindCompletionToken>
     struct next_then_1 : CHXNET_NONCOPYABLE {
@@ -233,12 +245,14 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
         template <typename FinalFunctor>
         decltype(auto) generate_token(io_context::task_t* task,
                                       FinalFunctor&& final_functor) {
-            return async_token_generate(
-                task, std::forward<FinalFunctor>(final_functor),
-                next_then_2(self, task,
-                            std::move(async_token_generate(
-                                task, __CHXNET_FAKE_FINAL_FUNCTOR(),
-                                bind_completion_token)(nullptr))));
+            self->__M_subtasks.push_back(task);
+            return next_then_2(
+                std::forward<FinalFunctor>(final_functor),
+                next_then_callable(self, task,
+                                   std::move(async_token_generate(
+                                       task, __CHXNET_FAKE_FINAL_FUNCTOR(),
+                                       std::forward<BindCompletionToken>(
+                                           bind_completion_token))(nullptr))));
         }
         template <typename T> decltype(auto) get_init(T t) {
             return async_token_init(t, bind_completion_token);
