@@ -373,7 +373,8 @@ class io_context : CHXNET_NONCOPYABLE {
     ~io_context() {
         __M_destructing = true;
         try {
-            while ((__M_static_total || !__M_dynamic_task_queue.empty())) {
+            while (!is_stopped() &&
+                   (__M_static_total || !__M_dynamic_task_queue.empty())) {
                 __async_cancel_all();
                 __run();
             }

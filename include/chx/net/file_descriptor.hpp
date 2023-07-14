@@ -52,6 +52,13 @@ class file_descriptor : CHXNET_NONCOPYABLE {
         detail::sfinae_placeholder<
             std::enable_if_t<detail::is_mutable_buffer<MutableBuffer>::value>>
             _ = net::detail::sfinae);
+    template <typename MutableBuffer, typename CompletionToken>
+    decltype(auto) async_read_some(
+        MutableBuffer&& mutable_buffer, std::size_t offset,
+        CompletionToken&& completion_token,
+        detail::sfinae_placeholder<
+            std::enable_if_t<detail::is_mutable_buffer<MutableBuffer>::value>>
+            _ = net::detail::sfinae);
     template <typename ConstBuffer, typename CompletionToken>
     decltype(auto) async_write_some(
         ConstBuffer&& const_buffer, CompletionToken&& completion_token,
