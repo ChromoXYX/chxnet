@@ -65,7 +65,20 @@ class file_descriptor : CHXNET_NONCOPYABLE {
         detail::sfinae_placeholder<
             std::enable_if_t<detail::is_const_buffer<ConstBuffer>::value>>
             _ = net::detail::sfinae);
+
+    template <typename StreamIn, typename CompletionToken>
+    decltype(auto) async_transfer(StreamIn&& stream_in, std::size_t total_size,
+                                  std::size_t block_size,
+                                  CompletionToken&& completion_token);
 };
+
+template <typename FileDescriptor, typename StreamIn, typename CompletionToken>
+decltype(auto) async_transfer(
+    FileDescriptor&& fd, StreamIn&& stream_in, std::size_t total_size,
+    std::size_t block_size, CompletionToken&& completion_token,
+    detail::sfinae_placeholder<std::enable_if_t<
+        std::is_base_of_v<file_descriptor, std::decay_t<FileDescriptor>>>>
+        _ = detail::sfinae);
 }  // namespace chx::net
 
 #include "./impl/file_descriptor.ipp"
