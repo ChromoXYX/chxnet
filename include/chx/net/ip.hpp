@@ -237,7 +237,7 @@ class address {
             return address_v6(addr6->sin6_addr);
         } else {
             auto* addr4 = reinterpret_cast<struct sockaddr_in*>(addr);
-            return address_v4(addr4->sin_addr.s_addr);
+            return address_v4(ntohl(addr4->sin_addr.s_addr));
         }
     }
 };

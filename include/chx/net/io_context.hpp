@@ -17,7 +17,7 @@
 #endif
 
 #ifndef CHXNET_ENABLE_SQPOLL
-#define CHXNET_ENABLE_SQPOLL 1
+#define CHXNET_ENABLE_SQPOLL 0
 #endif
 
 namespace chx::net {

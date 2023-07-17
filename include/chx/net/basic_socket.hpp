@@ -216,6 +216,54 @@ template <typename Protocol> class basic_socket {
             }
         }
     }
+
+    typename Protocol::endpoint
+    local_endpoint(std::error_code& e) noexcept(true) {
+        alignas(struct sockaddr_in6) unsigned char buffer[64] = {};
+        socklen_t len = sizeof(buffer);
+        if (getsockname(native_handler(),
+                        reinterpret_cast<struct sockaddr*>(buffer),
+                        &len) == 0) {
+            return Protocol::endpoint::make_endpoint(
+                reinterpret_cast<struct sockaddr*>(buffer));
+        } else {
+            detail::assign_ec(e, errno);
+            return {};
+        }
+    }
+    typename Protocol::endpoint local_endpoint() {
+        std::error_code e;
+        typename Protocol::endpoint ep = local_endpoint(e);
+        if (!e) {
+            return std::move(ep);
+        } else {
+            __CHXNET_THROW_EC(e);
+        }
+    }
+
+    typename Protocol::endpoint
+    remote_endpoint(std::error_code& e) noexcept(true) {
+        alignas(struct sockaddr_in6) unsigned char buffer[64] = {};
+        socklen_t len = sizeof(buffer);
+        if (getpeername(native_handler(),
+                        reinterpret_cast<struct sockaddr*>(buffer),
+                        &len) == 0) {
+            return Protocol::endpoint::make_endpoint(
+                reinterpret_cast<struct sockaddr*>(buffer));
+        } else {
+            detail::assign_ec(e, errno);
+            return {};
+        }
+    }
+    typename Protocol::endpoint remote_endpoint() {
+        std::error_code e;
+        typename Protocol::endpoint ep = remote_endpoint(e);
+        if (!e) {
+            return std::move(ep);
+        } else {
+            __CHXNET_THROW_EC(e);
+        }
+    }
 };
 }  // namespace chx::net
 
