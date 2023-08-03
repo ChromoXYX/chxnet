@@ -217,8 +217,8 @@ template <typename Protocol> class basic_socket {
         }
     }
 
-    typename Protocol::endpoint
-    local_endpoint(std::error_code& e) noexcept(true) {
+    typename Protocol::endpoint local_endpoint(std::error_code& e) const
+        noexcept(true) {
         alignas(struct sockaddr_in6) unsigned char buffer[64] = {};
         socklen_t len = sizeof(buffer);
         if (getsockname(native_handler(),
@@ -231,7 +231,7 @@ template <typename Protocol> class basic_socket {
             return {};
         }
     }
-    typename Protocol::endpoint local_endpoint() {
+    typename Protocol::endpoint local_endpoint() const {
         std::error_code e;
         typename Protocol::endpoint ep = local_endpoint(e);
         if (!e) {
@@ -241,8 +241,8 @@ template <typename Protocol> class basic_socket {
         }
     }
 
-    typename Protocol::endpoint
-    remote_endpoint(std::error_code& e) noexcept(true) {
+    typename Protocol::endpoint remote_endpoint(std::error_code& e) const
+        noexcept(true) {
         alignas(struct sockaddr_in6) unsigned char buffer[64] = {};
         socklen_t len = sizeof(buffer);
         if (getpeername(native_handler(),
@@ -255,7 +255,7 @@ template <typename Protocol> class basic_socket {
             return {};
         }
     }
-    typename Protocol::endpoint remote_endpoint() {
+    typename Protocol::endpoint remote_endpoint() const {
         std::error_code e;
         typename Protocol::endpoint ep = remote_endpoint(e);
         if (!e) {
