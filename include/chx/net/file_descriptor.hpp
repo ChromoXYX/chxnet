@@ -72,6 +72,8 @@ class file_descriptor : CHXNET_NONCOPYABLE {
                                   CompletionToken&& completion_token);
 };
 class file_descriptor_view : public file_descriptor {
+public:
+    using file_descriptor::file_descriptor;
     ~file_descriptor_view() { release(); }
 };
 
