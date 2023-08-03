@@ -71,6 +71,9 @@ class file_descriptor : CHXNET_NONCOPYABLE {
                                   std::size_t block_size,
                                   CompletionToken&& completion_token);
 };
+class file_descriptor_view : public file_descriptor {
+    ~file_descriptor_view() { release(); }
+};
 
 template <typename FileDescriptor, typename StreamIn, typename CompletionToken>
 decltype(auto) async_transfer(
