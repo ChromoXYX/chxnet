@@ -6,7 +6,7 @@
 
 namespace net = chx::net;
 
-net::task<> test() {
+net::task test() {
     // when using chx/net/coroutine.hpp, this coro will lead to crash.
     {
         net::ip::tcp::acceptor acceptor1(

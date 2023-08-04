@@ -5,7 +5,7 @@ namespace net = chx::net;
 
 int cwd = -1;
 
-net::task<> work() {
+net::task work() {
     net::ip::tcp::acceptor acceptor(
         co_await net::this_context,
         net::ip::tcp::endpoint(net::ip::tcp::v4(), 10000));

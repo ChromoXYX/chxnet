@@ -1,6 +1,6 @@
 #pragma once
 
-// #ifdef CHXNET_ENABLE_COROUTINE
+#ifdef CHXNET_ENABLE_COROUTINE
 
 // #ifndef CHXNET_ENABLE_CORO_WHEN_ANY
 // #define CHXNET_ENABLE_CORO_WHEN_ANY 0
@@ -54,78 +54,7 @@ inline void deliver_coro_then(io_context* ctx,
     ctx->async_nop([p = std::move(p)](const std::error_code& e) { p->f(); });
 }
 
-template <typename T> class task_impl {
-    struct promise {
-        ~promise() {
-            if (__M_then)
-                deliver_coro_then(__M_ctx, std::move(__M_then));
-        }
-        std::unique_ptr<coro_then_base> __M_then;
-        T __M_v;
-        io_context* __M_ctx = nullptr;
-
-        constexpr std::suspend_always initial_suspend() noexcept(true) {
-            return {};
-        }
-        constexpr std::suspend_never final_suspend() noexcept(true) {
-            return {};
-        }
-
-        constexpr auto await_transform(this_context_t) noexcept(true) {
-            return this_context_t::awaitable(__M_ctx);
-        }
-        template <typename Awaitable>
-        constexpr decltype(auto)
-        await_transform(Awaitable&& awaitable) noexcept(true) {
-            return std::forward<Awaitable>(awaitable);
-        }
-
-        template <typename R>
-        void return_value(R&& r) noexcept(
-            std::is_nothrow_assignable_v<T, decltype(r)>) {
-            __M_v = std::forward<R>(r);
-        }
-
-        void unhandled_exception() noexcept(true) {
-            deliver_exception(__M_ctx, std::current_exception());
-        }
-
-        task_impl<T> get_return_object() {
-            return {std::coroutine_handle<promise>::from_promise(*this)};
-        }
-
-        constexpr void set_io_context(io_context* ctx) noexcept(true) {
-            __M_ctx = ctx;
-        }
-        constexpr io_context& get_associated_io_context() noexcept(true) {
-            return *__M_ctx;
-        }
-    };
-
-  public:
-    using promise_type = promise;
-
-    task_impl(std::coroutine_handle<promise_type> h) noexcept(true)
-        : __M_h(h) {}
-    ~task_impl() {
-        if (__M_h) {
-            __M_h.destroy();
-        }
-    }
-
-    void resume() const { __M_h.resume(); }
-    void release() { __M_h = nullptr; }
-    bool done() const noexcept(true) { return __M_h.done(); }
-    promise_type& promise() noexcept(true) { return __M_h.promise(); }
-    std::coroutine_handle<> get_handle() noexcept(true) { return __M_h; }
-    io_context& get_associated_io_context() noexcept(true) {
-        return promise().get_associated_io_context();
-    }
-
-  protected:
-    std::coroutine_handle<promise_type> __M_h;
-};
-template <> class task_impl<void> {
+class task_impl {
     struct promise {
         ~promise() {
             if (__M_then)
@@ -155,7 +84,7 @@ template <> class task_impl<void> {
             deliver_exception(__M_ctx, std::current_exception());
         }
 
-        task_impl<void> get_return_object() {
+        task_impl get_return_object() {
             return {std::coroutine_handle<promise>::from_promise(*this)};
         }
 
@@ -202,8 +131,7 @@ template <> class task_impl<void> {
     std::coroutine_handle<promise_type> __M_h;
 };
 }  // namespace detail::coroutine
-
-template <typename T = void> using task = detail::coroutine::task_impl<T>;
+using task = detail::coroutine::task_impl;
 
 namespace detail::coroutine {
 struct awaitable_then_base {
@@ -630,9 +558,7 @@ operator()(io_context* ctx, Task&& coro, CompletionToken&& completion_token) {
                         then(std::remove_reference_t<decltype(token)>&& _t)
                             : t(std::move(_t)) {}
                         std::remove_reference_t<decltype(token)> t;
-                        void f() override {
-                            t(std::error_code{});
-                        }
+                        void f() override { t(std::error_code{}); }
                     };
                     coro.promise().__M_then.reset(new then(std::move(token)));
                     coro.resume();
@@ -646,4 +572,4 @@ operator()(io_context* ctx, Task&& coro, CompletionToken&& completion_token) {
         std::forward<CompletionToken>(completion_token));
 }
 
-// #endif
+#endif
