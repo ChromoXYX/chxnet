@@ -7,7 +7,7 @@
 #include <poll.h>
 
 namespace chx::net::ssl::detail {
-template <typename Stream, typename SSLOperation>
+template <typename Stream, typename SSLOperation, typename CntlType = void>
 struct ssl_rw_poll : SSLOperation {
     template <typename... Args>
     ssl_rw_poll(Stream* s, Args&&... args) noexcept(
@@ -16,6 +16,8 @@ struct ssl_rw_poll : SSLOperation {
 
     using use_poll = net::detail::async_operation<net::detail::tags::use_poll>;
     Stream* const sock;
+
+    template <typename T> using rebind = ssl_rw_poll<Stream, SSLOperation, T>;
 
     template <typename Cntl> void perform(Cntl& cntl) {
         ERR_clear_error();
@@ -39,6 +41,7 @@ struct ssl_rw_poll : SSLOperation {
     }
 
     template <typename Cntl> void operator()(Cntl& cntl) {
+        static_assert(!std::is_same_v<CntlType, void>);
         if (!sock->get_associated_io_context().__M_destructing) {
             perform(cntl);
         } else {

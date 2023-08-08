@@ -12,7 +12,8 @@ class bad_meth : public exception {
     using exception::exception;
 };
 
-template <typename Stream, typename SSLOperation> struct ssl_poll;
+template <typename Stream, typename SSLOperation, typename CntlType>
+struct ssl_poll;
 
 template <typename Stream> struct no_ktls_meth;
 template <typename Stream> const BIO_METHOD* bio_custom_meth_without_ktls();

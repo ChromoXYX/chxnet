@@ -9,10 +9,14 @@
 
 namespace chx::net::detail::tags {
 struct read_until {
-    template <typename Socket, typename DynamicBuffer, typename StopCond>
+    template <typename Socket, typename DynamicBuffer, typename StopCond,
+              typename CntlType = void>
     struct operation : StopCond {
         DynamicBuffer dyn_buf;
         Socket& socket;
+
+        template <typename CntlT>
+        using rebind = operation<Socket, DynamicBuffer, StopCond, CntlT>;
 
         template <typename DynBuf, typename SC>
         constexpr operation(Socket& sock, DynBuf&& buf, SC&& sc)
@@ -20,6 +24,7 @@ struct read_until {
               StopCond(std::forward<SC>(sc)) {}
 
         template <typename Cntl> void operator()(Cntl& cntl) {
+            static_assert(!std::is_same_v<CntlType, void>);
             dyn_buf.extend(StopCond::extend_size());
             socket.async_read_some(buffer(dyn_buf), cntl.next());
         }

@@ -36,8 +36,10 @@ template <> struct async_operation<tags::async_sendfile_splice> {
 };
 
 template <> struct async_operation<tags::async_sendfile> {
-    template <typename File, typename StreamRef>
+    template <typename File, typename StreamRef, typename CntlType = void>
     struct operation : CHXNET_NONCOPYABLE {
+        template <typename T> using rebind = operation<File, StreamRef, T>;
+
         File file;
         StreamRef stream_ref;
         std::size_t remain_size = 0;
@@ -74,6 +76,7 @@ template <> struct async_operation<tags::async_sendfile> {
         }
 
         template <typename Cntl> void operator()(Cntl& cntl) {
+            static_assert(!std::is_same_v<CntlType, void>);
             if (pipe(pipes) == 0 &&
                 (pipe_capacity = ::fcntl(pipes[0], F_GETPIPE_SZ)) != -1) {
                 return perform(cntl);

@@ -27,15 +27,19 @@ template <> struct async_operation<tags::write_seq_managed> {
             completion_token);
     }
 
-    template <typename Stream, typename Sequence> struct operation {
+    template <typename Stream, typename Sequence, typename CntlType = void>
+    struct operation {
         Stream stream;
         Sequence sequence;
+
+        template <typename T> using rebind = operation<Stream, Sequence, T>;
 
         template <typename S, typename Seq>
         operation(S&& s, Seq&& seq)
             : stream(std::forward<S>(s)), sequence(std::forward<Seq>(seq)) {}
 
         template <typename Cntl> void operator()(Cntl& cntl) {
+            static_assert(!std::is_same_v<CntlType, void>);
             io_context& ctx = stream.get_associated_io_context();
             nop(&ctx, async_token_bind<const std::error_code&>(cntl.next()));
             unsigned int low_boundary = ctx.__M_ring.sq.sqe_head;

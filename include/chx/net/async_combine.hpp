@@ -44,8 +44,14 @@ template <> struct async_operation<tags::async_combine_use_delivery> {
 
 template <typename Operation, typename CompletionToken,
           typename EnableReferenceCount = std::false_type>
-struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
+struct async_combine_impl
+    : Operation::template rebind<
+          async_combine_impl<Operation, CompletionToken, EnableReferenceCount>>,
+      CompletionToken,
+      CHXNET_NONCOPYABLE {
     using attribute_type = attribute<async_token>;
+    using rebind_operation =
+        typename Operation::template rebind<async_combine_impl>;
 
     io_context::task_t* const __M_associated_task;
     std::vector<io_context::task_t*> __M_subtasks;
@@ -53,7 +59,8 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     template <typename OpType, typename... OpArgs, typename C>
     constexpr async_combine_impl(io_context::task_t* task, C&& c,
                                  type_identity<OpType>, OpArgs&&... args)
-        : __M_associated_task(task), Operation(std::forward<OpArgs>(args)...),
+        : __M_associated_task(task),
+          rebind_operation(std::forward<OpArgs>(args)...),
           CompletionToken(std::forward<C>(c)) {
         // may be dangerous?
         // if async_combine is cancelled, would async_nop invoke it?
@@ -75,7 +82,8 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     template <typename OpType, typename... OpArgs, typename C>
     constexpr async_combine_impl(std::true_type, io_context::task_t* task,
                                  C&& c, type_identity<OpType>, OpArgs&&... args)
-        : __M_associated_task(task), Operation(std::forward<OpArgs>(args)...),
+        : __M_associated_task(task),
+          rebind_operation(std::forward<OpArgs>(args)...),
           CompletionToken(std::forward<C>(c)) {
         async_operation<tags::async_combine_use_delivery>()(
             &get_associated_io_context(),
@@ -137,7 +145,7 @@ struct async_combine_impl : Operation, CompletionToken, CHXNET_NONCOPYABLE {
     }
 
     template <typename... Ts> decltype(auto) direct_invoke(Ts&&... ts) {
-        return Operation::operator()(*this, std::forward<Ts>(ts)...);
+        return rebind_operation::operator()(*this, std::forward<Ts>(ts)...);
     }
 
     struct next_guard : CHXNET_NONCOPYABLE {

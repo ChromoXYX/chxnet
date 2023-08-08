@@ -30,11 +30,15 @@ struct chx::net::detail::async_operation<
             completion_token);
     }
 
-    template <typename Stream, typename Container> struct operation {
+    template <typename Stream, typename Container, typename CntlType = void>
+    struct operation {
         Stream stream;
         Container container;
 
+        template <typename T> using rebind = operation<Stream, Container, T>;
+
         template <typename Cntl> void operator()(Cntl& cntl) {
+            static_assert(!std::is_same_v<CntlType, void>);
             io_context& ctx = stream.get_associated_io_context();
             nop(&ctx, async_token_bind<const std::error_code&>(cntl.next()));
             unsigned int low_boundary = ctx.__M_ring.sq.sqe_head;
@@ -113,10 +117,13 @@ struct chx::net::detail::async_operation<
             completion_token);
     }
 
-    template <typename Stream, typename Container> struct operation {
+    template <typename Stream, typename Container, typename CntlType = void>
+    struct operation {
         Stream stream;
         Container container;
         decltype(generate_iovec(container)) iov;
+
+        template <typename T> using rebind = operation<Stream, Container, T>;
 
         template <typename S, typename C>
         operation(S&& s, C&& c)
@@ -124,6 +131,7 @@ struct chx::net::detail::async_operation<
               iov(generate_iovec(container)) {}
 
         template <typename Cntl> void operator()(Cntl& cntl) {
+            static_assert(!std::is_same_v<CntlType, void>);
             io_context& ctx = stream.get_associated_io_context();
             async_operation<tags::write_managed>::nop(
                 &ctx, async_token_bind<const std::error_code&>(cntl.next()));

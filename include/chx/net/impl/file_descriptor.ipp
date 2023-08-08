@@ -74,9 +74,14 @@ template <> struct async_operation<tags::fd_write> {
 };
 
 template <> struct async_operation<tags::fd_transfer> {
-    template <typename FileDescriptor, typename StreamIn> struct operation {
+    template <typename FileDescriptor, typename StreamIn,
+              typename CntlType = void>
+    struct operation {
         struct read {};
         struct write {};
+
+        template <typename T>
+        using rebind = operation<FileDescriptor, StreamIn, T>;
 
         std::vector<unsigned char> buffer;
         FileDescriptor fd;
@@ -101,6 +106,7 @@ template <> struct async_operation<tags::fd_transfer> {
         }
 
         template <typename Cntl> void operator()(Cntl& cntl) {
+            static_assert(!std::is_same_v<CntlType, void>);
             perform_read(cntl);
         }
 
