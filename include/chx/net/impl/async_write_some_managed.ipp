@@ -11,6 +11,15 @@ struct write_managed {};
 struct writev_managed {};
 }  // namespace chx::net::detail::tags
 
+namespace chx::net::detail {
+struct clearable_impl {
+    template <typename T, typename = decltype(std::declval<T>().clear())>
+    clearable_impl(T&&) {}
+};
+template <typename T>
+using container_clearable = std::is_constructible<clearable_impl, T>;
+}  // namespace chx::net::detail
+
 template <>
 struct chx::net::detail::async_operation<
     chx::net::detail::tags::write_managed> {
@@ -54,7 +63,9 @@ struct chx::net::detail::async_operation<
 
         template <typename Cntl>
         void operator()(Cntl& cntl, const std::error_code&) {
-            container.clear();
+            if constexpr (container_clearable<Container>::value) {
+                container.clear();
+            }
         }
 
         template <typename Cntl>
@@ -73,13 +84,6 @@ struct chx::net::detail::async_operation<
 template <>
 struct chx::net::detail::async_operation<
     chx::net::detail::tags::writev_managed> {
-    template <typename T> struct has_clear {
-        template <typename R> static std::true_type f(decltype(&R::clear));
-        template <typename R> static std::false_type f(...);
-
-        using type = decltype(f<T>(0));
-    };
-
     template <typename Container>
     static auto generate_iovec(Container& container) {
         using type =
@@ -153,7 +157,9 @@ struct chx::net::detail::async_operation<
             }
             using value_type =
                 std::remove_reference_t<decltype(*std::begin(container))>;
-            if constexpr (has_clear<value_type>::type::value) {
+            if constexpr (container_clearable<Container>::value) {
+                container.clear();
+            } else if constexpr (container_clearable<value_type>::value) {
                 for (auto& i : container) {
                     i.clear();
                 }
