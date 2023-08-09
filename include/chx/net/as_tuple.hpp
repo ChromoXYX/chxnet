@@ -100,7 +100,6 @@ template <typename T> struct as_tuple {
     using attribute_type = attribute<async_token>;
 
     T t;
-    static_assert(std::is_reference_v<T>);
 
     /**
      * @brief Construct a new as_tuple object.
@@ -127,5 +126,6 @@ template <typename T> struct as_tuple {
     }
 };
 template <typename CompletionToken>
-as_tuple(CompletionToken&&) -> as_tuple<CompletionToken&&>;
+as_tuple(CompletionToken&&)
+    -> as_tuple<std::remove_reference_t<CompletionToken>>;
 }  // namespace chx::net

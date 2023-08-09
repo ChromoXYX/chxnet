@@ -73,7 +73,10 @@ class file_descriptor : CHXNET_NONCOPYABLE {
 };
 class file_descriptor_view : public file_descriptor {
   public:
-    using file_descriptor::file_descriptor;
+    constexpr file_descriptor_view(io_context& ctx, int fd = -1) noexcept(true)
+        : file_descriptor(ctx, fd) {}
+    file_descriptor_view(file_descriptor_view&& other) noexcept(true)
+        : file_descriptor(std::move(other)) {}
     ~file_descriptor_view() { release(); }
 };
 
