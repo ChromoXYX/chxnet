@@ -46,7 +46,7 @@ template <typename Protocol> class basic_socket {
             return *this;
         }
         __M_ctx = other.__M_ctx;
-        __M_fd = std::exchange(other.__M_fd, -1);
+        __M_fd = std::exchange(other.__M_fd, __M_fd);
         return *this;
     }
 

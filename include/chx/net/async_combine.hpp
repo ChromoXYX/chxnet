@@ -286,7 +286,9 @@ struct async_combine_impl
         }
     };
     template <typename CT>
-    next_then_0(async_combine_impl*, CT&&) -> next_then_0<CT&&>;
+    next_then_0(async_combine_impl*, CT&&) -> next_then_0<CT>;
+    template <typename CT>
+    next_then_0(async_combine_impl*, CT&) -> next_then_0<CT&>;
 
     template <typename CT> decltype(auto) next_then(CT&& completion_token) {
         return next_then_0(this, std::forward<CT>(completion_token));

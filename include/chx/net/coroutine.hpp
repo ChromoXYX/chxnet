@@ -43,8 +43,8 @@ template <typename T = void, bool IsView = false> class task_impl {
             return this_context_t::awaitable(__M_ctx);
         }
         template <typename Awaitable>
-        constexpr decltype(auto) await_transform(
-            Awaitable&& awaitable) noexcept(true) {
+        constexpr decltype(auto)
+        await_transform(Awaitable&& awaitable) noexcept(true) {
             return std::forward<Awaitable>(awaitable);
         }
 
@@ -103,8 +103,8 @@ template <bool IsView> class task_impl<void, IsView> {
             return this_context_t::awaitable(__M_ctx);
         }
         template <typename Awaitable>
-        constexpr decltype(auto) await_transform(
-            Awaitable&& awaitable) noexcept(true) {
+        constexpr decltype(auto)
+        await_transform(Awaitable&& awaitable) noexcept(true) {
             return std::forward<Awaitable>(awaitable);
         }
 
@@ -146,7 +146,7 @@ template <bool IsView> class task_impl<void, IsView> {
             return *this;
         }
         if constexpr (!IsView) {
-            __M_h = std::exchange(other.__M_h, nullptr);
+            __M_h = std::exchange(other.__M_h, __M_h);
         }
         return *this;
     }
@@ -327,9 +327,9 @@ struct main_op {
     using attribute_type = attribute<async_token>;
 
     template <typename... Signature>
-    constexpr auto bind(
-        sfinae_placeholder<std::enable_if_t<(sizeof...(Signature) > 0)>> _ =
-            detail::sfinae) const noexcept(true) {
+    constexpr auto
+    bind(sfinae_placeholder<std::enable_if_t<(sizeof...(Signature) > 0)>> _ =
+             detail::sfinae) const noexcept(true) {
         return ops<Signature...>{};
     }
 };

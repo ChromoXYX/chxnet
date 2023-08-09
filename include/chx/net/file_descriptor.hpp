@@ -23,7 +23,7 @@ class file_descriptor : CHXNET_NONCOPYABLE {
             return *this;
         }
         __M_ctx = other.__M_ctx;
-        __M_fd = std::exchange(other.__M_fd, -1);
+        __M_fd = std::exchange(other.__M_fd, __M_fd);
         return *this;
     }
 
@@ -72,7 +72,7 @@ class file_descriptor : CHXNET_NONCOPYABLE {
                                   CompletionToken&& completion_token);
 };
 class file_descriptor_view : public file_descriptor {
-public:
+  public:
     using file_descriptor::file_descriptor;
     ~file_descriptor_view() { release(); }
 };

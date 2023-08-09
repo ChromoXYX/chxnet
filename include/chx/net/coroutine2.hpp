@@ -114,7 +114,7 @@ class task_impl {
         if (this == &other) {
             return *this;
         }
-        __M_h = std::exchange(other.__M_h, nullptr);
+        __M_h = std::exchange(other.__M_h, __M_h);
         return *this;
     }
 
