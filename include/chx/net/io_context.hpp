@@ -52,7 +52,7 @@ class io_context : CHXNET_NONCOPYABLE {
 
         std::uint64_t __M_additional = {};
 
-        bool __M_static = true;
+        // bool __M_static = true;
 
         bool __M_avail = true;
         bool __M_persist = false;
@@ -85,10 +85,10 @@ class io_context : CHXNET_NONCOPYABLE {
             return __M_token.underlying_data();
         }
     };
-    __task_t* __M_static_task_queue = nullptr;
-    const std::size_t __M_static_task_sz;
-    std::size_t __M_static_total = 0;
-    std::size_t __M_last_static = 0;
+    // __task_t* __M_static_task_queue = nullptr;
+    // const std::size_t __M_static_task_sz;
+    // std::size_t __M_static_total = 0;
+    // std::size_t __M_last_static = 0;
 
     std::vector<std::unique_ptr<__task_t>> __M_dynamic_task_queue;
     std::size_t __M_dyn_total = 0;
@@ -107,49 +107,50 @@ class io_context : CHXNET_NONCOPYABLE {
 
   protected:
     __task_t* acquire() {
-        if (__M_static_total < __M_static_task_sz) {
-            for (std::size_t i = __M_static_total < 128 ? 0
-                                                        : __M_last_static + 1;
-                 i < __M_static_task_sz; ++i) {
-                if (__M_static_task_queue[i].__M_avail) {
-                    __M_static_task_queue[i].__M_avail = false;
-                    ++__M_static_total;
-                    __M_last_static = i;
-                    return &__M_static_task_queue[i];
+        // if (__M_static_total < __M_static_task_sz) {
+        //     for (std::size_t i = __M_static_total < 128 ? 0
+        //                                                 : __M_last_static +
+        //                                                 1;
+        //          i < __M_static_task_sz; ++i) {
+        //         if (__M_static_task_queue[i].__M_avail) {
+        //             __M_static_task_queue[i].__M_avail = false;
+        //             ++__M_static_total;
+        //             __M_last_static = i;
+        //             return &__M_static_task_queue[i];
+        //         }
+        //     }
+        //     for (std::size_t i = 0; i < __M_last_static; ++i) {
+        //         if (__M_static_task_queue[i].__M_avail) {
+        //             __M_static_task_queue[i].__M_avail = false;
+        //             ++__M_static_total;
+        //             __M_last_static = i;
+        //             return &__M_static_task_queue[i];
+        //         }
+        //     }
+        // } else {
+        if (__M_dyn_total < __M_dynamic_task_queue.size()) {
+            for (std::size_t idx = 0; idx < __M_dyn_end + 1; ++idx) {
+                if (__M_dynamic_task_queue[idx]->__M_avail) {
+                    auto* p = __M_dynamic_task_queue[idx].get();
+                    ++__M_dyn_total;
+                    p->__M_avail = false;
+                    return p;
                 }
             }
-            for (std::size_t i = 0; i < __M_last_static; ++i) {
-                if (__M_static_task_queue[i].__M_avail) {
-                    __M_static_task_queue[i].__M_avail = false;
-                    ++__M_static_total;
-                    __M_last_static = i;
-                    return &__M_static_task_queue[i];
-                }
-            }
+            __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
         } else {
-            if (__M_dyn_total < __M_dynamic_task_queue.size()) {
-                for (std::size_t idx = 0; idx < __M_dyn_end + 1; ++idx) {
-                    if (__M_dynamic_task_queue[idx]->__M_avail) {
-                        auto* p = __M_dynamic_task_queue[idx].get();
-                        ++__M_dyn_total;
-                        p->__M_avail = false;
-                        return p;
-                    }
-                }
-            } else {
-                __M_dynamic_task_queue.emplace_back(new __task_t(this));
+            __M_dynamic_task_queue.emplace_back(new __task_t(this));
 
-                ++__M_dyn_total;
-                __M_dyn_end = __M_dynamic_task_queue.size() - 1;
+            ++__M_dyn_total;
+            __M_dyn_end = __M_dynamic_task_queue.size() - 1;
 
-                auto* p = __M_dynamic_task_queue.back().get();
-                p->__M_avail = false;
-                p->__M_static = false;
-                p->__M_dyn_idx = __M_dyn_end;
-                return p;
-            }
+            auto* p = __M_dynamic_task_queue.back().get();
+            p->__M_avail = false;
+            // p->__M_static = false;
+            p->__M_dyn_idx = __M_dyn_end;
+            return p;
         }
-        __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
+        // }
     }
 
     void submit() {
@@ -161,33 +162,33 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     void release(__task_t* task) noexcept(true) {
-        if (task->__M_static) {
-            --__M_static_total;
-            task->__M_avail = true;
-            task->reset();
-        } else {
-            --__M_dyn_total;
-            if (__M_dyn_total == 0) {
-                __M_dyn_end = 0;
-                __M_dynamic_task_queue.clear();
-                return;
-            }
-            task->__M_avail = true;
-            if (task->__M_dyn_idx == __M_dyn_end) {
-                std::size_t idx = __M_dyn_end - 1;
-                for (; idx; --idx) {
-                    if (!__M_dynamic_task_queue[idx]->__M_avail) {
-                        break;
-                    }
-                }
-                __M_dyn_end = idx;
-                __M_dynamic_task_queue.erase(__M_dynamic_task_queue.begin() +
-                                                 idx + 1,
-                                             __M_dynamic_task_queue.end());
-            } else {
-                task->reset();
-            }
+        // if (task->__M_static) {
+        //     --__M_static_total;
+        //     task->__M_avail = true;
+        //     task->reset();
+        // } else {
+        --__M_dyn_total;
+        if (__M_dyn_total == 0) {
+            __M_dyn_end = 0;
+            __M_dynamic_task_queue.clear();
+            return;
         }
+        task->__M_avail = true;
+        if (task->__M_dyn_idx == __M_dyn_end) {
+            std::size_t idx = __M_dyn_end - 1;
+            for (; idx; --idx) {
+                if (!__M_dynamic_task_queue[idx]->__M_avail) {
+                    break;
+                }
+            }
+            __M_dyn_end = idx;
+            __M_dynamic_task_queue.erase(__M_dynamic_task_queue.begin() + idx +
+                                             1,
+                                         __M_dynamic_task_queue.end());
+        } else {
+            task->reset();
+        }
+        // }
     }
 
     [[nodiscard]] io_uring_sqe* get_sqe(__task_t* task = nullptr) {
@@ -243,7 +244,7 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     void __run() {
-        while (__M_static_total || __M_dyn_total) {
+        while (/* __M_static_total || */ __M_dyn_total) {
             if (int r = io_uring_submit_and_wait(&__M_ring, 1); r < 0) {
                 __CHXNET_THROW_WITH(-r, bad_io_context_exec);
             }
@@ -308,17 +309,13 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     void __async_cancel_all() {
-        // auto* sqe = get_sqe();
-        // io_uring_prep_cancel(sqe, nullptr, IORING_ASYNC_CANCEL_ANY);
-        // sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
-        // io_uring_sqe_set_data(sqe, nullptr);
-        for (std::size_t idx = 0; idx < __M_static_task_sz; ++idx) {
-            if (!__M_static_task_queue[idx].__M_avail) {
-                auto* sqe = get_sqe();
-                io_uring_prep_cancel(sqe, &__M_static_task_queue[idx],
-                                     IORING_ASYNC_CANCEL_ALL);
-            }
-        }
+        // for (std::size_t idx = 0; idx < __M_static_task_sz; ++idx) {
+        //     if (!__M_static_task_queue[idx].__M_avail) {
+        //         auto* sqe = get_sqe();
+        //         io_uring_prep_cancel(sqe, &__M_static_task_queue[idx],
+        //                              IORING_ASYNC_CANCEL_ALL);
+        //     }
+        // }
         for (auto& ptr : __M_dynamic_task_queue) {
             auto* sqe = get_sqe();
             io_uring_prep_cancel(sqe, ptr.get(), IORING_ASYNC_CANCEL_ALL);
@@ -338,7 +335,7 @@ class io_context : CHXNET_NONCOPYABLE {
      *
      */
     io_context(std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(__task_t))
-        : __M_static_task_sz(static_task_sz) {
+    /*: __M_static_task_sz(static_task_sz)*/ {
         struct io_uring_params params = {};
 #if CHXNET_ENABLE_SQPOLL
         if (getuid() == 0) {
@@ -353,17 +350,18 @@ class io_context : CHXNET_NONCOPYABLE {
             __CHXNET_THROW_WITH(-r, bad_io_uring_init);
         }
 
-        __M_static_task_queue =
-            static_cast<__task_t*>(::malloc(sizeof(__task_t) * static_task_sz));
-        if (__M_static_task_queue == nullptr) {
-            __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
-        }
+        // __M_static_task_queue =
+        //     static_cast<__task_t*>(::malloc(sizeof(__task_t) *
+        //     static_task_sz));
+        // if (__M_static_task_queue == nullptr) {
+        //     __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
+        // }
 
-        for (std::size_t i = 0; i < static_task_sz; ++i) {
-            auto* p = ::new (&__M_static_task_queue[i]) __task_t(this);
-            p->__M_avail = true;
-            p->__M_static = true;
-        }
+        // for (std::size_t i = 0; i < static_task_sz; ++i) {
+        //     auto* p = ::new (&__M_static_task_queue[i]) __task_t(this);
+        //     p->__M_avail = true;
+        //     p->__M_static = true;
+        // }
     }
 
     /**
@@ -374,21 +372,21 @@ class io_context : CHXNET_NONCOPYABLE {
         __M_destructing = true;
         try {
             while (!is_stopped() &&
-                   (__M_static_total || !__M_dynamic_task_queue.empty())) {
+                   (/*__M_static_total ||*/ !__M_dynamic_task_queue.empty())) {
                 __async_cancel_all();
                 __run();
             }
         } catch (...) {
             io_uring_queue_exit(&__M_ring);
-            std::destroy(__M_static_task_queue,
-                         __M_static_task_queue + __M_static_task_sz);
-            ::free(__M_static_task_queue);
+            // std::destroy(__M_static_task_queue,
+            //              __M_static_task_queue + __M_static_task_sz);
+            // ::free(__M_static_task_queue);
             std::rethrow_exception(std::current_exception());
         }
         io_uring_queue_exit(&__M_ring);
-        std::destroy(__M_static_task_queue,
-                     __M_static_task_queue + __M_static_task_sz);
-        ::free(__M_static_task_queue);
+        // std::destroy(__M_static_task_queue,
+        //              __M_static_task_queue + __M_static_task_sz);
+        // ::free(__M_static_task_queue);
     }
     /**
      * @brief Start waiting for async tasks to be completed.

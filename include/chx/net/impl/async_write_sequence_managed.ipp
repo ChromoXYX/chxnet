@@ -28,9 +28,12 @@ template <> struct async_operation<tags::write_seq_managed> {
     }
 
     template <typename Stream, typename Sequence, typename CntlType = void>
-    struct operation {
+    struct operation : CHXNET_NONCOPYABLE {
         Stream stream;
         Sequence sequence;
+
+        std::size_t rs = {};
+        std::error_code re = {};
 
         template <typename T> using rebind = operation<Stream, Sequence, T>;
 
@@ -52,10 +55,18 @@ template <> struct async_operation<tags::write_seq_managed> {
         template <typename Cntl>
         void operator()(Cntl& cntl, const std::error_code& e) {
             sequence = {};
+            if (cntl.tracked_task_empty()) {
+                cntl.complete(re, rs);
+            }
         }
         template <typename Cntl>
         void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
-            cntl.complete(e, s);
+            if (cntl.tracked_task_empty()) {
+                cntl.complete(e, s);
+            } else {
+                re = e;
+                rs = s;
+            }
         }
     };
     template <typename Stream, typename Sequence>
@@ -75,7 +86,7 @@ chx::net::async_write_sequence_managed(Stream&& stream, Sequence&& sequence,
         decltype(detail::async_operation<detail::tags::write_seq_managed>::
                      operation(std::forward<Stream>(stream),
                                std::forward<Sequence>(sequence)));
-    return async_combine_reference_count<const std::error_code&, std::size_t>(
+    return async_combine<const std::error_code&, std::size_t>(
         stream.get_associated_io_context(),
         std::forward<CompletionToken>(completion_token),
         detail::type_identity<operation_type>(), std::forward<Stream>(stream),

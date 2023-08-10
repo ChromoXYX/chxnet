@@ -40,9 +40,12 @@ struct chx::net::detail::async_operation<
     }
 
     template <typename Stream, typename Container, typename CntlType = void>
-    struct operation {
+    struct operation : CHXNET_NONCOPYABLE {
         Stream stream;
         Container container;
+
+        std::error_code re = {};
+        std::size_t rs = 0;
 
         template <typename T> using rebind = operation<Stream, Container, T>;
 
@@ -66,11 +69,19 @@ struct chx::net::detail::async_operation<
             if constexpr (container_clearable<Container>::value) {
                 container.clear();
             }
+            if (cntl.tracked_task_empty()) {
+                cntl.complete(re, rs);
+            }
         }
 
         template <typename Cntl>
         void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
-            cntl.complete(e, s);
+            if (cntl.tracked_task_empty()) {
+                cntl.complete(e, s);
+            } else {
+                re = e;
+                rs = s;
+            }
         }
     };
     template <typename Stream, typename Container>
@@ -122,10 +133,13 @@ struct chx::net::detail::async_operation<
     }
 
     template <typename Stream, typename Container, typename CntlType = void>
-    struct operation {
+    struct operation : CHXNET_NONCOPYABLE {
         Stream stream;
         Container container;
         decltype(generate_iovec(container)) iov;
+
+        std::error_code re = {};
+        std::size_t rs = 0;
 
         template <typename T> using rebind = operation<Stream, Container, T>;
 
@@ -164,11 +178,19 @@ struct chx::net::detail::async_operation<
                     i.clear();
                 }
             }
+            if (cntl.tracked_task_empty()) {
+                cntl.complete(re, rs);
+            }
         }
 
         template <typename Cntl>
         void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
-            cntl.complete(e, s);
+            if (cntl.tracked_task_empty()) {
+                cntl.complete(e, s);
+            } else {
+                re = e;
+                rs = s;
+            }
         }
     };
     template <typename Stream, typename Container>
