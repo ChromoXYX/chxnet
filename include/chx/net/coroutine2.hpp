@@ -16,17 +16,7 @@
 #include "./detail/type_identity.hpp"
 #include "./detail/sfinae_placeholder.hpp"
 #include "./cancellation.hpp"
-
-namespace chx::net::detail::tags {
-struct coro_cospawn {};
-}  // namespace chx::net::detail::tags
-
-template <>
-struct chx::net::detail::async_operation<chx::net::detail::tags::coro_cospawn> {
-    template <typename Task, typename CompletionToken>
-    decltype(auto) operator()(io_context* ctx, Task&& task,
-                              CompletionToken&& completion_token);
-};
+#include "./async_combine.hpp"
 
 namespace chx::net {
 struct this_context_t {
@@ -49,16 +39,11 @@ struct coro_then_base {
     virtual void f() = 0;
     virtual ~coro_then_base() = default;
 };
-inline void deliver_coro_then(io_context* ctx,
-                              std::unique_ptr<coro_then_base> p) {
-    ctx->async_nop([p = std::move(p)](const std::error_code& e) { p->f(); });
-}
-
 class task_impl {
     struct promise {
         ~promise() {
             if (__M_then)
-                deliver_coro_then(__M_ctx, std::move(__M_then));
+                __M_then->f();
         }
         std::unique_ptr<coro_then_base> __M_then;
         io_context* __M_ctx = nullptr;
@@ -122,7 +107,9 @@ class task_impl {
     void release() { __M_h = nullptr; }
     bool done() const noexcept(true) { return __M_h.done(); }
     promise_type& promise() noexcept(true) { return __M_h.promise(); }
-    std::coroutine_handle<> get_handle() noexcept(true) { return __M_h; }
+    std::coroutine_handle<promise_type> get_handle() noexcept(true) {
+        return __M_h;
+    }
     io_context& get_associated_io_context() noexcept(true) {
         return promise().get_associated_io_context();
     }
@@ -509,6 +496,41 @@ struct main_op {
         return ops<Signature...>{};
     }
 };
+
+template <typename Task, typename CntlType = int> struct co_spawn_operation {
+    template <typename T> using rebind = co_spawn_operation<Task, T>;
+    Task task;
+
+    template <typename T>
+    co_spawn_operation(T&& t) : task(std::forward<T>(t)) {}
+
+    void operator()(CntlType& cntl) {
+        struct then : coro_then_base {
+            constexpr then(co_spawn_operation* p) noexcept(true) : self(p) {}
+            co_spawn_operation* self;
+            void f() override {
+                (*self)(static_cast<CntlType&>(*self), std::error_code{});
+            }
+        };
+        task.promise().__M_then.reset(new then(this));
+        task.resume();
+    }
+
+    void operator()(CntlType& cntl, const std::error_code& e) {
+        task.release();
+        cntl.complete(e);
+    }
+
+    ~co_spawn_operation() {
+        // if coro is still suspend, release __M_then, because we are going to
+        // destroy it.
+        if (task.get_handle()) {
+            task.promise().__M_then.reset();
+        }
+    }
+};
+template <typename Task>
+co_spawn_operation(Task&&) -> co_spawn_operation<std::remove_reference_t<Task>>;
 }  // namespace detail::coroutine
 
 /**
@@ -526,10 +548,16 @@ inline static constexpr use_coro_t use_coro = {};
 template <typename Task, typename CompletionToken>
 decltype(auto) co_spawn(io_context& ctx, Task&& t,
                         CompletionToken&& completion_token) {
-    return detail::async_operation<detail::tags::coro_cospawn>()(
-        &ctx, std::move(t),
-        detail::async_token_bind<const std::error_code&>(
-            std::forward<CompletionToken>(completion_token)));
+    // return detail::async_operation<detail::tags::coro_cospawn>()(
+    //     &ctx, std::move(t),
+    //     detail::async_token_bind<const std::error_code&>(
+    //         std::forward<CompletionToken>(completion_token)));
+    using operation_type =
+        decltype(detail::coroutine::co_spawn_operation(std::forward<Task>(t)));
+    t.promise().set_io_context(&ctx);
+    return async_combine<const std::error_code&>(
+        ctx, std::forward<CompletionToken>(completion_token),
+        detail::type_identity<operation_type>{}, std::forward<Task>(t));
 }
 
 template <typename... Awaitables>
@@ -538,38 +566,5 @@ decltype(auto) when_any(Awaitables&&... awaitables) {
         std::forward<Awaitables>(awaitables)...);
 }
 }  // namespace chx::net
-
-template <typename Task, typename CompletionToken>
-decltype(auto)
-chx::net::detail::async_operation<chx::net::detail::tags::coro_cospawn>::
-operator()(io_context* ctx, Task&& coro, CompletionToken&& completion_token) {
-    io_context::__task_t* task = ctx->acquire();
-    auto* sqe = ctx->get_sqe(task);
-    io_uring_prep_nop(sqe);
-
-    coro.promise().set_io_context(ctx);
-    return detail::async_token_init(
-        task->__M_token.emplace(detail::async_token_generate(
-            task,
-            [coro = std::remove_reference_t<Task>(std::move(coro))](
-                auto& token, io_context::__task_t* self) mutable -> int {
-                if (!self->__M_ec) {
-                    struct then : coroutine::coro_then_base {
-                        then(std::remove_reference_t<decltype(token)>&& _t)
-                            : t(std::move(_t)) {}
-                        std::remove_reference_t<decltype(token)> t;
-                        void f() override { t(std::error_code{}); }
-                    };
-                    coro.promise().__M_then.reset(new then(std::move(token)));
-                    coro.resume();
-                    coro.release();
-                } else {
-                    token(self->__M_ec);
-                }
-                return 0;
-            },
-            std::forward<CompletionToken>(completion_token))),
-        std::forward<CompletionToken>(completion_token));
-}
 
 #endif
