@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 
 #include "./io_context.hpp"
+#include "./impl/general_async_close.hpp"
 
 namespace chx::net::detail::tags {
 struct cancel_fd {};
@@ -263,6 +264,14 @@ template <typename Protocol> class basic_socket {
         } else {
             __CHXNET_THROW_EC(e);
         }
+    }
+
+    template <typename CompletionToken>
+    decltype(auto) async_close(CompletionToken&& completion_token) {
+        return detail::async_operation<detail::tags::async_close>()(
+            &get_associated_io_context(), this,
+            detail::async_token_bind<const std::error_code&>(
+                std::forward<CompletionToken>(completion_token)));
     }
 };
 }  // namespace chx::net

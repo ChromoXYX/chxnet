@@ -2,7 +2,8 @@
 
 #include "./io_context.hpp"
 #include "./buffer.hpp"
-#include "detail/sfinae_placeholder.hpp"
+#include "./detail/sfinae_placeholder.hpp"
+#include "./impl/general_async_close.hpp"
 
 namespace chx::net {
 class file_descriptor : CHXNET_NONCOPYABLE {
@@ -70,6 +71,14 @@ class file_descriptor : CHXNET_NONCOPYABLE {
     decltype(auto) async_transfer(StreamIn&& stream_in, std::size_t total_size,
                                   std::size_t block_size,
                                   CompletionToken&& completion_token);
+
+    template <typename CompletionToken>
+    decltype(auto) async_close(CompletionToken&& completion_token) {
+        return detail::async_operation<detail::tags::async_close>()(
+            &get_associated_io_context(), this,
+            detail::async_token_bind<const std::error_code&>(
+                std::forward<CompletionToken>(completion_token)));
+    }
 };
 class file_descriptor_view : public file_descriptor {
   public:

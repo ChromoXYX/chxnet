@@ -35,17 +35,19 @@ inline void deliver_exception(io_context* ctx, std::exception_ptr ex) {
         [ex](const std::error_code& ec) { std::rethrow_exception(ex); });
 }
 
-struct coro_then_base {
-    virtual void f() = 0;
-    virtual ~coro_then_base() = default;
-};
+// struct coro_then_base {
+//     virtual void f() = 0;
+//     virtual ~coro_then_base() = default;
+// };
 class task_impl {
     struct promise {
         ~promise() {
             if (__M_then)
-                __M_then->f();
+                __M_then(__M_then_data);
         }
-        std::unique_ptr<coro_then_base> __M_then;
+        // std::unique_ptr<coro_then_base> __M_then;
+        void* __M_then_data = nullptr;
+        void (*__M_then)(void*) = nullptr;
         io_context* __M_ctx = nullptr;
 
         constexpr std::suspend_always initial_suspend() noexcept(true) {
@@ -505,14 +507,11 @@ template <typename Task, typename CntlType = int> struct co_spawn_operation {
     co_spawn_operation(T&& t) : task(std::forward<T>(t)) {}
 
     void operator()(CntlType& cntl) {
-        struct then : coro_then_base {
-            constexpr then(co_spawn_operation* p) noexcept(true) : self(p) {}
-            co_spawn_operation* self;
-            void f() override {
-                (*self)(static_cast<CntlType&>(*self), std::error_code{});
-            }
+        task.promise().__M_then_data = this;
+        task.promise().__M_then = [](void* p) {
+            auto* self = static_cast<co_spawn_operation*>(p);
+            (*self)(static_cast<CntlType&>(*self), std::error_code{});
         };
-        task.promise().__M_then.reset(new then(this));
         task.resume();
     }
 
@@ -525,7 +524,7 @@ template <typename Task, typename CntlType = int> struct co_spawn_operation {
         // if coro is still suspend, release __M_then, because we are going to
         // destroy it.
         if (task.get_handle()) {
-            task.promise().__M_then.reset();
+            task.promise().__M_then = nullptr;
         }
     }
 };
