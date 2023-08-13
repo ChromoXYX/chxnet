@@ -2,6 +2,7 @@
 
 #include "./io_context.hpp"
 #include "./attribute.hpp"
+#include "./file_descriptor.hpp"
 
 // TODO: change poll to read, poll may be useless here.
 
@@ -16,7 +17,6 @@ namespace detail {
 namespace tags {
 struct signal_cancel {};
 struct signal_wait {};
-struct signal_failed {};
 }  // namespace tags
 
 template <> struct async_operation<tags::signal_cancel> {
@@ -32,78 +32,6 @@ template <> struct async_operation<tags::signal_wait> {
     decltype(auto) operator()(io_context* ctx, signal* sig,
                               CompletionToken&& completion_token);
 };
-
-template <typename FinalFunctor, typename BaseCT>
-struct signal_failed_final : FinalFunctor, BaseCT {
-    int error = 0;
-
-    template <typename F, typename T>
-    constexpr signal_failed_final(F&& f, T&& t, int e)
-        : FinalFunctor(std::forward<F>(f)), BaseCT(std::forward<T>(t)),
-          error(e) {}
-
-    int operator()(io_context::task_t* self) {
-        auto fn = [this](const std::error_code& ec) mutable {
-            return static_cast<BaseCT&>(*this)(
-                ec ? ec : detail::make_ec(this->error), this->error);
-        };
-        return FinalFunctor::operator()(fn, self);
-    }
-};
-template <typename FinalFunctor, typename BaseCT>
-signal_failed_final(FinalFunctor&&, BaseCT&&, int)
-    -> signal_failed_final<std::remove_reference_t<FinalFunctor>,
-                           std::remove_reference_t<BaseCT>>;
-
-template <typename T> struct signal_failed {
-    using attribute_type = attribute<async_token>;
-
-    T t;
-    int error;
-
-    template <typename CompletionToken>
-    constexpr signal_failed(int e,
-                            CompletionToken&& completion_token) noexcept(true)
-        : error(e), t(std::forward<CompletionToken>(completion_token)) {}
-
-    template <typename... Signature>
-    constexpr decltype(auto) bind() noexcept(true) {
-        return *this;
-    }
-
-    template <typename FinalFunctor>
-    decltype(auto) generate_token(io_context::task_t* task,
-                                  FinalFunctor&& final_functor) {
-        return signal_failed_final(
-            std::forward<FinalFunctor>(final_functor),
-            detail::async_token_generate(task, __CHXNET_FAKE_FINAL_FUNCTOR(),
-                                         t)(nullptr),
-            error);
-    }
-
-    template <typename TypeIdentity> decltype(auto) get_init(TypeIdentity ti) {
-        return detail::async_token_init(ti, t);
-    }
-};
-template <typename CompletionToken>
-signal_failed(int, CompletionToken&&)
-    -> signal_failed<std::remove_reference_t<CompletionToken>>;
-
-template <typename CompletionToken>
-constexpr decltype(auto)
-make_signal_failed(int error, CompletionToken&& completion_token) {
-    if constexpr (is_async_token<std::decay_t<CompletionToken>>::value) {
-        return signal_failed(
-            error, detail::async_token_bind<const std::error_code&, int>(
-                       std::forward<CompletionToken>(completion_token)));
-    } else {
-        return
-            [completion_token = std::forward<CompletionToken>(completion_token),
-             error](const std::error_code& ec) mutable {
-                completion_token(ec ? ec : detail::make_ec(error), 0);
-            };
-    }
-}
 }  // namespace detail
 
 /**
@@ -132,6 +60,25 @@ class signal {
         sigemptyset(&set);
         signalfd(__M_sigfd, &set, 0);
     }
+
+    template <typename CntlType = int> struct operation {
+        template <typename T> using rebind = operation<T>;
+
+        signal* self = nullptr;
+        file_descriptor_view fd;
+        struct signalfd_siginfo sigbuf = {};
+
+        constexpr operation(signal* s) noexcept(true)
+            : self(s), fd(self->get_associated_io_context(), self->__M_sigfd) {}
+
+        void operator()(CntlType& cntl) {
+            fd.async_read_some(buffer(&sigbuf, sizeof(sigbuf)), cntl.next());
+        }
+        void operator()(CntlType& cntl, const std::error_code& e,
+                        std::size_t s) {
+            cntl.complete(e, sigbuf.ssi_signo);
+        }
+    };
 
   public:
     /**
@@ -270,71 +217,25 @@ class signal {
             if (sigprocmask(SIG_SETMASK, &__M_sigset, nullptr) == -1) {
                 // if failed to set signal block mask.
                 close(ec);
-                return __M_ctx->async_nop(detail::make_signal_failed(
-                    errno, std::forward<CompletionToken>(completion_token)));
+                __CHXNET_THROW(errno);
             }
             if (!is_open() &&
-                ((__M_sigfd = signalfd(-1, &__M_sigset, 0)) == -1)) {
+                ((__M_sigfd = signalfd(__M_sigfd, &__M_sigset, 0)) == -1)) {
                 // if current signalfd is not open, and failed to get a new
                 // signalfd.
                 __clean_mask();
-                return __M_ctx->async_nop(detail::make_signal_failed(
-                    errno, std::forward<CompletionToken>(completion_token)));
-
+                __CHXNET_THROW(errno);
             } else if (signalfd(__M_sigfd, &__M_sigset, 0) == -1) {
                 // if failed to update current signalfd.
                 close(ec);
-                return __M_ctx->async_nop(detail::make_signal_failed(
-                    errno, std::forward<CompletionToken>(completion_token)));
+                __CHXNET_THROW(errno);
             }
             __M_sync = true;
         }
-        return detail::async_operation<detail::tags::signal_wait>()(
-            &get_associated_io_context(), this,
-            detail::async_token_bind<const std::error_code&, int>(
-                std::forward<CompletionToken>(completion_token)));
+        return async_combine<const std::error_code&, int>(
+            get_associated_io_context(),
+            std::forward<CompletionToken>(completion_token),
+            detail::type_identity<operation<>>{}, this);
     }
 };
 }  // namespace chx::net
-
-template <typename CompletionToken>
-decltype(auto)
-chx::net::detail::async_operation<chx::net::detail::tags::signal_wait>::
-operator()(io_context* ctx, signal* sig, CompletionToken&& completion_token) {
-    io_context::task_t* task = ctx->acquire();
-    auto* sqe = ctx->get_sqe(task);
-    io_uring_prep_poll_add(sqe, sig->__M_sigfd, POLLIN);
-
-    task->__M_additional = reinterpret_cast<std::uint64_t>(sig);
-    sig->__M_keep = true;
-    return detail::async_token_init(
-        task->__M_token.emplace(detail::async_token_generate(
-            task,
-            [](auto& completion_token,
-               io_context::task_t* self) mutable -> int {
-                auto* sig = reinterpret_cast<signal*>(self->__M_additional);
-
-                int sigfd = sig->__M_sigfd;
-                int signal = 0;
-                if (!self->__M_ec) {
-                    signalfd_siginfo info = {};
-                    if (int r = read(sigfd, &info, sizeof(info));
-                        r == sizeof(info)) {
-                        signal = info.ssi_signo;
-                    } else {
-                        detail::assign_ec(self->__M_ec, errno);
-                    }
-                }
-                sig->__M_keep = false;
-                completion_token(self->__M_ec, signal);
-                if (!sig->__M_keep) {
-                    sig->__clean_mask();
-                    if (sig->is_open()) {
-                        sig->__clean_fd();
-                    }
-                }
-                return 0;
-            },
-            std::forward<CompletionToken>(completion_token))),
-        std::forward<CompletionToken>(completion_token));
-}
