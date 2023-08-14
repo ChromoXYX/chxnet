@@ -28,10 +28,42 @@ net::task test() {
                                    this_ctx.async_nop(net::use_coro));
         std::cout << val.index() << "\n";
     }
+    co_return;
+}
+
+net::future<int> chain3() {
+    net::io_context& ctx = co_await net::this_context;
+    std::cout << 16 << "\n";
+    co_await ctx.async_nop(net::use_coro);
+    std::cout << 17 << "\n";
+    co_await ctx.async_nop(net::use_coro);
+    std::cout << 18 << "\n";
+    co_return 19;
+}
+
+net::future<> chain2() {
+    net::io_context& ctx = co_await net::this_context;
+    std::cout << 14 << "\n";
+    co_await ctx.async_nop(net::use_coro);
+    std::cout << 15 << "\n";
+    co_await ctx.async_nop(net::use_coro);
+    std::cout << co_await chain3() << "\n";
+    co_return;
+}
+
+net::task chain1() {
+    net::io_context& ctx = co_await net::this_context;
+    std::cout << 11 << "\n";
+    co_await ctx.async_nop(net::use_coro);
+    std::cout << 12 << "\n";
+    co_await ctx.async_nop(net::use_coro);
+    std::cout << 13 << "\n";
+    co_await chain2();
 }
 
 int main(void) {
     net::io_context ctx;
     co_spawn(ctx, test(), net::detached);
+    co_spawn(ctx, chain1(), net::detached);
     ctx.run();
 }

@@ -35,10 +35,6 @@ inline void deliver_exception(io_context* ctx, std::exception_ptr ex) {
         [ex](const std::error_code& ec) { std::rethrow_exception(ex); });
 }
 
-// struct coro_then_base {
-//     virtual void f() = 0;
-//     virtual ~coro_then_base() = default;
-// };
 class task_impl {
     struct promise {
         ~promise() {
@@ -119,8 +115,189 @@ class task_impl {
   protected:
     std::coroutine_handle<promise_type> __M_h;
 };
+
+template <typename T> struct future_impl {
+    ~future_impl() {
+        if (h) {
+            // h.promise().disconnect();
+            h.destroy();
+        }
+    }
+
+    struct awaitable;
+    struct promise_type;
+    struct promise_base {
+        ~promise_base() { disconnect(); }
+
+        io_context* __M_ctx = nullptr;
+        awaitable* __M_awa = nullptr;
+        std::coroutine_handle</*task_impl::promise_type*/> __M_parent;
+
+        constexpr std::suspend_always initial_suspend() noexcept(true) {
+            return {};
+        }
+        auto final_suspend() noexcept(true);
+        future_impl get_return_object() {
+            return {std::coroutine_handle<promise_type>::from_promise(
+                static_cast<promise_type&>(*this))};
+        }
+
+        void disconnect() noexcept(true);
+
+        constexpr auto await_transform(this_context_t) noexcept(true) {
+            return this_context_t::awaitable(__M_ctx);
+        }
+        template <typename Awaitable>
+        constexpr decltype(auto)
+        await_transform(Awaitable&& awaitable) noexcept(true) {
+            return std::forward<Awaitable>(awaitable);
+        }
+    };
+
+    struct awaitable_base {
+        awaitable_base(future_impl* f) : pro(&f->h.promise()) {}
+        awaitable_base(awaitable_base&& other) noexcept(true)
+            : pro(std::exchange(other.pro, nullptr)) {
+            if (pro) {
+                pro->__M_awa = static_cast<awaitable*>(this);
+            }
+        }
+        ~awaitable_base() { disconnect(); }
+
+        promise_type* pro;
+
+        constexpr bool await_ready() noexcept(true) { return false; }
+        template <typename R> auto await_suspend(std::coroutine_handle<R> h) {
+            pro->__M_parent = h;
+            pro->__M_awa = static_cast<awaitable*>(this);
+            pro->__M_ctx = h.promise().__M_ctx;
+            return std::coroutine_handle<promise_type>::from_promise(*pro);
+        }
+
+        void disconnect() noexcept(true) {
+            if (pro) {
+                pro->__M_awa = nullptr;
+                pro->__M_parent = {};
+                pro = nullptr;
+            }
+        }
+    };
+
+    std::coroutine_handle<promise_type> h;
+
+    auto operator co_await();
+};
+
+template <> struct future_impl<void>::awaitable : awaitable_base {
+    using awaitable_base::awaitable_base;
+    awaitable(awaitable&& other) noexcept(true)
+        : awaitable_base(std::move(other)) {}
+
+    std::exception_ptr __M_ex;
+
+    void await_resume() {
+        if (__M_ex) {
+            std::rethrow_exception(__M_ex);
+        }
+    }
+};
+template <typename T> struct future_impl<T>::awaitable : awaitable_base {
+    using awaitable_base::awaitable_base;
+    awaitable(awaitable&& other) noexcept(true)
+        : awaitable_base(std::move(other)) {}
+
+    std::variant<std::monostate, T, std::exception_ptr> value;
+
+    T& await_resume() & {
+        switch (value.index()) {
+        case 1: {
+            return std::get<1>(value);
+        }
+        case 2: {
+            std::rethrow_exception(std::get<2>(value));
+        }
+        default: {
+            __CHXNET_THROW(EINVAL);
+        }
+        }
+    }
+    T&& await_resume() && {
+        switch (value.index()) {
+        case 1: {
+            return std::move(std::get<1>(value));
+        }
+        case 2: {
+            std::rethrow_exception(std::get<2>(value));
+        }
+        default: {
+            __CHXNET_THROW(EINVAL);
+        }
+        }
+    }
+};
+
+template <typename T>
+auto future_impl<T>::promise_base::final_suspend() noexcept(true) {
+    struct __awa {
+        constexpr bool await_ready() noexcept(true) { return false; }
+        std::coroutine_handle<>
+        await_suspend(std::coroutine_handle<promise_type> h) noexcept(true) {
+            if (h.promise().__M_parent) {
+                return h.promise().__M_parent;
+            } else {
+                return std::noop_coroutine();
+            }
+        }
+        constexpr void await_resume() noexcept(true) {}
+    };
+    return __awa{};
+}
+template <typename T>
+void future_impl<T>::promise_base::disconnect() noexcept(true) {
+    if (__M_awa) {
+        __M_awa->pro = nullptr;
+        __M_awa = nullptr;
+        __M_parent = {};
+    }
+}
+template <typename T> auto future_impl<T>::operator co_await() {
+    return awaitable(this);
+}
+
+template <> struct future_impl<void>::promise_type : promise_base {
+    constexpr void return_void() noexcept(true) {}
+    void unhandled_exception() noexcept(true) {
+        if (promise_base::__M_awa) {
+            promise_base::__M_awa->__M_ex = std::current_exception();
+        } else {
+            deliver_exception(promise_base::__M_ctx, std::current_exception());
+        }
+    }
+};
+
+template <typename T> struct future_impl<T>::promise_type : promise_base {
+    void return_value(const T& t) {
+        if (promise_base::__M_awa) {
+            promise_base::__M_awa->value.template emplace<1>(t);
+        }
+    }
+    void return_value(T&& t) {
+        if (promise_base::__M_awa) {
+            promise_base::__M_awa->value.template emplace<1>(std::move(t));
+        }
+    }
+    void unhandled_exception() noexcept(true) {
+        if (promise_base::__M_awa) {
+            promise_base::__M_awa->value.template emplace<2>(
+                std::current_exception());
+        } else {
+            deliver_exception(promise_base::__M_ctx, std::current_exception());
+        }
+    }
+};
 }  // namespace detail::coroutine
 using task = detail::coroutine::task_impl;
+template <typename T = void> using future = detail::coroutine::future_impl<T>;
 
 namespace detail::coroutine {
 struct awaitable_then_base {
