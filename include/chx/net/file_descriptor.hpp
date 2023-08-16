@@ -34,8 +34,8 @@ class file_descriptor : CHXNET_NONCOPYABLE {
         }
     }
 
-    constexpr io_context& get_associated_io_context() noexcept(true) {
-        return *__M_ctx;
+    constexpr io_context& get_associated_io_context() const noexcept(true) {
+        return const_cast<io_context&>(*__M_ctx);
     }
     constexpr int native_handler() const noexcept(true) { return __M_fd; }
     constexpr void release() noexcept(true) { __M_fd = -1; }
@@ -45,7 +45,13 @@ class file_descriptor : CHXNET_NONCOPYABLE {
         return native_handler() > 0 &&
                (::fcntl(native_handler(), F_GETFD) || errno != EBADF);
     }
-    int close() noexcept(true) { return ::close(native_handler()); }
+    int close() noexcept(true) {
+        if (is_open()) {
+            return ::close(native_handler());
+        } else {
+            return -1;
+        }
+    }
 
     template <typename MutableBuffer, typename CompletionToken>
     decltype(auto) async_read_some(
