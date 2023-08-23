@@ -96,6 +96,13 @@ struct async_combine_impl
             next());
     }
 
+    ~async_combine_impl() {
+        for (auto* subtask : __M_subtasks) {
+            subtask->__M_token.emplace(
+                [](io_context::task_t*) -> int { return 0; });
+        }
+    }
+
     int operator()(io_context::task_t*) {
         for (auto t : __M_subtasks) {
             async_operation<tags::async_combine_cancel_and_submit>().cancel(
