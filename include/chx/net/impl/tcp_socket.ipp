@@ -67,9 +67,40 @@ class tcp::socket : public socket_base {
     template <typename CompletionToken>
     decltype(auto) async_connect(const ip::tcp::endpoint& end_point,
                                  CompletionToken&& completion_token) {
-        return net::detail::async_operation<ip::detail::tags::connect>()(
-            &get_associated_io_context(), this, end_point,
-            std::forward<CompletionToken>(completion_token));
+        return net::detail::async_operation<detail::tags::connect2>()(
+            &get_associated_io_context(),
+            net::detail::async_operation<detail::tags::connect2>::c2(
+                end_point,
+                net::detail::async_token_bind<const std::error_code&>(
+                    std::forward<CompletionToken>(completion_token)),
+                native_handler()));
+    }
+
+    void connect(const ip::tcp::endpoint& endpoint,
+                 std::error_code& ec) noexcept(true) {
+        ec.clear();
+        union {
+            struct sockaddr_in in;
+            struct sockaddr_in6 in6;
+        } st = {};
+        if (endpoint.address().is_v4()) {
+            st.in = endpoint.sockaddr_in();
+        } else {
+            st.in6 = endpoint.sockaddr_in6();
+        }
+        if (::connect(native_handler(), (const struct sockaddr*)&st,
+                      endpoint.address().is_v4()
+                          ? sizeof(sockaddr_in)
+                          : sizeof(sockaddr_in6)) == -1) {
+            net::detail::assign_ec(ec, errno);
+        }
+    }
+    void connect(const ip::tcp::endpoint& endpoint) {
+        std::error_code ec;
+        connect(endpoint, ec);
+        if (ec) {
+            __CHXNET_THROW_EC(ec);
+        }
     }
 
     /**
@@ -126,6 +157,36 @@ class tcp::socket : public socket_base {
                 std::forward<CompletionToken>(completion_token)));
     }
 
+    template <typename ConstBuffer>
+    std::size_t write(
+        ConstBuffer&& const_buffer, std::error_code& ec,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
+            _ = net::detail::sfinae) noexcept(true) {
+        ec.clear();
+        net::const_buffer buf =
+            net::buffer(std::forward<ConstBuffer>(const_buffer));
+        ssize_t r = 0;
+        if (r = ::write(native_handler(), buf.data(), buf.size()); r == -1) {
+            net::detail::assign_ec(ec, errno);
+        }
+        return r;
+    }
+    template <typename ConstBuffer>
+    std::size_t write(
+        ConstBuffer&& const_buffer,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
+            _ = net::detail::sfinae) {
+        std::error_code ec;
+        std::size_t r = write(std::forward<ConstBuffer>(const_buffer), ec);
+        if (!ec) {
+            return r;
+        } else {
+            __CHXNET_THROW_EC(ec);
+        }
+    }
+
     /**
      * @brief Submit a read async task for a single buffer.
      *
@@ -150,6 +211,34 @@ class tcp::socket : public socket_base {
             std::forward<MutableBuffer>(buffer),
             net::detail::async_token_bind<const std::error_code&, std::size_t>(
                 std::forward<CompletionToken>(completion_token)));
+    }
+
+    template <typename MutableBuffer>
+    std::size_t read(MutableBuffer&& mutable_buffer, std::error_code& ec,
+                     net::detail::sfinae_placeholder<std::enable_if_t<
+                         net::detail::is_mutable_buffer<MutableBuffer>::value>>
+                         _ = net::detail::sfinae) noexcept(true) {
+        ec.clear();
+        net::mutable_buffer buf =
+            net::buffer(std::forward<MutableBuffer>(mutable_buffer));
+        ssize_t r = 0;
+        if (r = ::read(native_handler(), buf.data(), buf.size()); r == -1) {
+            net::detail::assign_ec(ec, errno);
+        }
+        return r;
+    }
+    template <typename MutableBuffer>
+    std::size_t read(MutableBuffer&& mutable_buffer,
+                     net::detail::sfinae_placeholder<std::enable_if_t<
+                         net::detail::is_mutable_buffer<MutableBuffer>::value>>
+                         _ = net::detail::sfinae) {
+        std::error_code ec;
+        std::size_t r = read(std::forward<MutableBuffer>(mutable_buffer), ec);
+        if (!ec) {
+            return r;
+        } else {
+            __CHXNET_THROW_EC(ec);
+        }
     }
 
     /**

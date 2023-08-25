@@ -260,7 +260,8 @@ template <> struct async_operation<tags::async_write_seq> {
         -> write_seq2<std::remove_reference_t<FlatSequence>,
                       std::remove_reference_t<GeneratedCompletionToken>>;
 
-    template <typename SequenceRef, typename BindCompletionToken>
+    template <typename SequenceRef, typename BindCompletionToken,
+              typename UseWritev>
     struct write_seq1 {
         BindCompletionToken bind_completion_token;
         SequenceRef sequence_ref;
@@ -269,8 +270,8 @@ template <> struct async_operation<tags::async_write_seq> {
 
         using attribute_type = attribute<async_token>;
 
-        template <typename BCT, typename SR>
-        write_seq1(BCT&& bct, SR&& sr, int f)
+        template <typename BCT, typename SR, typename UW>
+        write_seq1(BCT&& bct, SR&& sr, int f, UW&&)
             : bind_completion_token(std::forward<BCT>(bct)),
               sequence_ref(std::forward<SR>(sr)), fd(f) {}
 
@@ -290,15 +291,20 @@ template <> struct async_operation<tags::async_write_seq> {
             auto* sqe = task->get_associated_io_context().get_sqe(task);
             auto* d = static_cast<typename TypeIdentity::type*>(
                 task->get_underlying_data());
-            io_uring_prep_writev(sqe, fd, d->flat_sequence.data(),
-                                 d->flat_sequence.size(), 0);
+            if constexpr (UseWritev::value) {
+                io_uring_prep_writev(sqe, fd, d->flat_sequence.data(),
+                                     d->flat_sequence.size(), 0);
+            } else {
+                io_uring_prep_readv(sqe, fd, d->flat_sequence.data(),
+                                    d->flat_sequence.size(), 0);
+            }
             return async_token_init(
                 ti, std::forward<BindCompletionToken>(bind_completion_token));
         }
     };
-    template <typename SequenceRef, typename BindCompletionToken>
-    write_seq1(BindCompletionToken&&, SequenceRef&&, int)
-        -> write_seq1<SequenceRef&&, BindCompletionToken&&>;
+    template <typename SequenceRef, typename BindCompletionToken, typename UW>
+    write_seq1(BindCompletionToken&&, SequenceRef&&, int, UW&&)
+        -> write_seq1<SequenceRef&&, BindCompletionToken&&, std::decay_t<UW>>;
 
     template <typename CompletionToken>
     decltype(auto) operator()(io_context* ctx,
@@ -327,5 +333,6 @@ chx::net::async_write_sequence(Stream& stream, Sequence&& sequence,
         detail::async_operation<detail::tags::async_write_seq>::write_seq1(
             detail::async_token_bind<const std::error_code&, std::size_t>(
                 std::forward<CompletionToken>(completion_token)),
-            std::forward<Sequence>(sequence), stream.native_handler()));
+            std::forward<Sequence>(sequence), stream.native_handler(),
+            std::true_type{}));
 }
