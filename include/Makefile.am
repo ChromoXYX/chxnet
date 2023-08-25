@@ -24,6 +24,7 @@ chx/net/detached.hpp \
 chx/net/buffer_sequence.hpp \
 chx/net/dynamic_buffer.hpp \
 chx/net/file_descriptor.hpp \
+chx/net/async_read_sequence.hpp \
 chx/net/async_write_sequence.hpp \
 chx/net/async_read.hpp \
 chx/net/io_context.hpp \

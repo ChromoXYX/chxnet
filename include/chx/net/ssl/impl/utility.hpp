@@ -5,6 +5,7 @@
 namespace chx::net::detail::tags {
 struct use_poll {};
 struct ssl_submit {};
+struct ssl_check_destructing {};
 }  // namespace chx::net::detail::tags
 
 template <>
@@ -20,4 +21,12 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::use_poll> {
 template <>
 struct chx::net::detail::async_operation<chx::net::detail::tags::ssl_submit> {
     void operator()(io_context* ctx) { ctx->submit(); }
+};
+
+template <>
+struct chx::net::detail::async_operation<
+    chx::net::detail::tags::ssl_check_destructing> {
+    constexpr bool operator()(io_context* ctx) noexcept(true) {
+        return ctx->__M_destructing;
+    }
 };

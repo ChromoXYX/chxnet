@@ -40,7 +40,7 @@ struct use_delivery {};
 class io_context : CHXNET_NONCOPYABLE {
     template <typename Tag> friend struct detail::async_operation;
 
-  public:
+  protected:
     io_uring __M_ring;
     bool __M_stopped = false;
     bool __M_destructing = false;

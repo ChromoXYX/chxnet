@@ -40,7 +40,10 @@ struct ssl_poll : SSLOperation {
 
     template <typename Cntl> void operator()(Cntl& cntl) {
         static_assert(!std::is_same_v<CntlType, void>);
-        if (!sock->get_associated_io_context().__M_destructing) {
+        if (!  // sock->get_associated_io_context().__M_destructing
+            net::detail::async_operation<
+                net::detail::tags::ssl_check_destructing>()(
+                &sock->get_associated_io_context())) {
             perform(cntl);
         } else {
             cntl.complete(net::detail::make_ec(net::errc::operation_canceled));
