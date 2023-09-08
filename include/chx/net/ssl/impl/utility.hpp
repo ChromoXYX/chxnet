@@ -26,7 +26,7 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::ssl_submit> {
 template <>
 struct chx::net::detail::async_operation<
     chx::net::detail::tags::ssl_check_destructing> {
-    constexpr bool operator()(io_context* ctx) noexcept(true) {
-        return ctx->__M_destructing;
+    bool operator()(io_context* ctx) noexcept(true) {
+        return ctx->__M_mt_destruct.load();
     }
 };
