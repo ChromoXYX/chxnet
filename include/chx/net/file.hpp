@@ -6,6 +6,18 @@
 
 namespace chx::net {
 class file : public file_descriptor {
+    void __openat2(int dirfd, const char* pathname, const struct open_how* how,
+                   std::error_code& e) noexcept(true) {
+        e.clear();
+        long _r = syscall(SYS_openat2, dirfd, pathname, how, sizeof(open_how));
+        if (_r != -1) {
+            close();
+            set_fd(_r);
+        } else {
+            net::detail::assign_ec(e, errno);
+        }
+    }
+
   public:
     using file_descriptor::file_descriptor;
     using file_descriptor::operator=;
@@ -41,6 +53,54 @@ class file : public file_descriptor {
     template <typename CompletionToken>
     decltype(auto) async_openat(const char* filename,
                                 CompletionToken&& completion_token);
+
+    void openat(const char* filename, std::error_code& e) noexcept(true) {
+        struct open_how _h = {};
+        __openat2(-1, filename, &_h, e);
+    }
+    void openat(const char* filename, const open_how& h,
+                std::error_code& e) noexcept(true) {
+        __openat2(-1, filename, &h, e);
+    }
+    void openat(const file_descriptor& dir, const char* filename,
+                std::error_code& e) noexcept(true) {
+        struct open_how _h = {};
+        __openat2(dir.native_handler(), filename, &_h, e);
+    }
+    void openat(const file_descriptor& dir, const char* filename,
+                const open_how& h, std::error_code& e) noexcept(true) {
+        __openat2(dir.native_handler(), filename, &h, e);
+    }
+
+    void openat(const char* filename) {
+        std::error_code e;
+        openat(filename, e);
+        if (e) {
+            __CHXNET_THROW_EC(e);
+        }
+    }
+    void openat(const char* filename, const open_how& h) {
+        std::error_code e;
+        openat(filename, h, e);
+        if (e) {
+            __CHXNET_THROW_EC(e);
+        }
+    }
+    void openat(const file_descriptor& dir, const char* filename) {
+        std::error_code e;
+        openat(dir, filename, e);
+        if (e) {
+            __CHXNET_THROW_EC(e);
+        }
+    }
+    void openat(const file_descriptor& dir, const char* filename,
+                const open_how& h) {
+        std::error_code e;
+        openat(dir, filename, h, e);
+        if (e) {
+            __CHXNET_THROW_EC(e);
+        }
+    }
 };
 }  // namespace chx::net
 
