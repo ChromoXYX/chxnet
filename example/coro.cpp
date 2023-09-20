@@ -51,6 +51,11 @@ net::future<> chain2() {
     co_return;
 }
 
+net::nop_future<int> norm() {
+    std::cout << "this is a normal function\n";
+    return {42};
+}
+
 net::task chain1() {
     net::io_context& ctx = co_await net::this_context;
     std::cout << 11 << "\n";
@@ -59,6 +64,7 @@ net::task chain1() {
     co_await ctx.async_nop(net::use_coro);
     std::cout << 13 << "\n";
     co_await chain2();
+    std::cout << "\t and it's return value is " << co_await norm() << "\n";
 }
 
 int main(void) {

@@ -116,6 +116,27 @@ class task_impl {
     std::coroutine_handle<promise_type> __M_h;
 };
 
+template <typename T> struct nop_future_impl {
+    T value;
+
+    constexpr auto operator co_await() noexcept(true) {
+        struct __awa : std::suspend_never {
+            nop_future_impl* self;
+
+            T& await_resume() & noexcept(true) { return self->value; }
+            T&& await_resume() && noexcept(true) {
+                return std::move(self->value);
+            }
+        };
+        return __awa{{}, this};
+    }
+};
+template <> struct nop_future_impl<void> {
+    constexpr std::suspend_never operator co_await() noexcept(true) {
+        return {};
+    }
+};
+
 template <typename T> struct future_impl {
     ~future_impl() {
         if (h) {
@@ -298,6 +319,8 @@ template <typename T> struct future_impl<T>::promise_type : promise_base {
 }  // namespace detail::coroutine
 using task = detail::coroutine::task_impl;
 template <typename T = void> using future = detail::coroutine::future_impl<T>;
+template <typename T = void>
+using nop_future = detail::coroutine::nop_future_impl<T>;
 
 namespace detail::coroutine {
 struct awaitable_then_base {
