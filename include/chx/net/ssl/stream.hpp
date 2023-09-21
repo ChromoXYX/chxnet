@@ -15,9 +15,6 @@ class bad_meth : public exception {
 template <typename Stream, typename SSLOperation, typename CntlType>
 struct ssl_poll;
 
-template <typename Stream, typename SSLOperation> struct ssl_no_ktls;
-template <typename Stream, typename SSLOperation> struct ssl_no_ktls_rw;
-
 struct ssl_deleter {
     void operator()(SSL* ssl) noexcept(true) { SSL_free(ssl); }
 };
@@ -29,7 +26,8 @@ class bad_ssl_socket : public exception {
 };
 
 template <typename Socket> class stream : public Socket {
-    template <typename S, typename SSLOperation> friend struct detail::ssl_poll;
+    template <typename S, typename SSLOperation, typename CntlType>
+    friend struct detail::ssl_poll;
     template <typename Tag> friend struct net::detail::async_operation;
 
     context* __M_context = nullptr;

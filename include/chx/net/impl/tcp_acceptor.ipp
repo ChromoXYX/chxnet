@@ -59,6 +59,15 @@ class tcp::acceptor : public socket_base {
      */
     acceptor(acceptor&& other) : socket_base(std::move(other)) {}
 
+    constexpr acceptor& lower_layer() noexcept(true) { return *this; }
+    constexpr const acceptor& lower_layer() const noexcept(true) {
+        return *this;
+    }
+    constexpr acceptor& lowest_layer() noexcept(true) { return lower_layer(); }
+    constexpr const acceptor& lowest_layer() const noexcept(true) {
+        return lower_layer();
+    }
+
     /**
      * @brief Start listening.
      *

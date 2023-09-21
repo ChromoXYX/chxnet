@@ -64,6 +64,13 @@ class tcp::socket : public socket_base {
         return *this;
     }
 
+    constexpr socket& lower_layer() noexcept(true) { return *this; }
+    constexpr const socket& lower_layer() const noexcept(true) { return *this; }
+    constexpr socket& lowest_layer() noexcept(true) { return lower_layer(); }
+    constexpr const socket& lowest_layer() const noexcept(true) {
+        return lower_layer();
+    }
+
     template <typename CompletionToken>
     decltype(auto) async_connect(const ip::tcp::endpoint& end_point,
                                  CompletionToken&& completion_token) {

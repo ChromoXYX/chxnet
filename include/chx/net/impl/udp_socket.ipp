@@ -33,6 +33,13 @@ class udp::socket : public basic_socket<udp> {
     }
     socket(io_context& ctx, int fd) : basic_socket<udp>(&ctx) { __M_fd = fd; }
 
+    constexpr socket& lower_layer() noexcept(true) { return *this; }
+    constexpr const socket& lower_layer() const noexcept(true) { return *this; }
+    constexpr socket& lowest_layer() noexcept(true) { return lower_layer(); }
+    constexpr const socket& lowest_layer() const noexcept(true) {
+        return lower_layer();
+    }
+
     template <typename CompletionToken>
     decltype(auto) async_connect(const endpoint& end_point,
                                  CompletionToken&& completion_token) {
