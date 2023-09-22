@@ -32,6 +32,8 @@
 #include "./net/async_sendfile.hpp"
 #include "./net/managed.hpp"
 #include "./net/async_write_sequence.hpp"
+#include "./net/async_write_sequence_exactly.hpp"
 #include "./net/async_read_sequence.hpp"
+#include "./net/async_write_some_exactly.hpp"
 #include "./net/async_openat.hpp"
 #include "./net/utility.hpp"

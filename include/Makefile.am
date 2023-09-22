@@ -6,9 +6,11 @@ chx/net/managed.hpp \
 chx/net/as_tuple.hpp \
 chx/net/ktimer.hpp \
 chx/net/utility.hpp \
+chx/net/async_write_sequence_exactly.hpp \
 chx/net/signal.hpp \
 chx/net/async_openat.hpp \
 chx/net/async_sendfile.hpp \
+chx/net/async_write_some_exactly.hpp \
 chx/net/attribute.hpp \
 chx/net/udp.hpp \
 chx/net/buffer.hpp \
@@ -48,6 +50,8 @@ chx/net/impl/file_descriptor.ipp \
 chx/net/impl/tcp_acceptor.ipp \
 chx/net/impl/async_read_until.ipp \
 chx/net/impl/async_read.ipp \
+chx/net/impl/async_write_some_exactly.ipp \
+chx/net/impl/async_write_sequence_exactly.ipp \
 chx/net/impl/file.ipp \
 chx/net/ssl/context.hpp \
 chx/net/ssl/error_code.hpp \
