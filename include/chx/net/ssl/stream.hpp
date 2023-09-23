@@ -2,6 +2,7 @@
 
 #include "../tcp.hpp"
 #include "./context.hpp"
+#include "../async_write_sequence_exactly.hpp"
 
 #include <sys/epoll.h>
 
@@ -68,6 +69,8 @@ template <typename Socket> class stream : public Socket {
     }
 
   public:
+    using attribute_type = attribute<net::detail::no_short_write>;
+
     template <typename... Args>
     stream(context& ssl_context, Args&&... args)
         : ip::tcp::socket(std::forward<Args>(args)...),
@@ -110,6 +113,13 @@ template <typename Socket> class stream : public Socket {
                     net::detail::sfinae_placeholder<std::enable_if_t<
                         net::detail::is_mutable_buffer<MutableBuffer>::value>>
                         _ = net::detail::sfinae);
+
+    template <typename IovArr, typename CompletionToken>
+    decltype(auto) async_write_some(
+        IovArr&& iov_arr, CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<!net::detail::is_const_buffer<IovArr>::value>>
+            _ = net::detail::sfinae);
 };
 }  // namespace chx::net::ssl
 
@@ -117,3 +127,4 @@ template <typename Socket> class stream : public Socket {
 #include "./impl/shutdown.ipp"
 #include "./impl/write.ipp"
 #include "./impl/read.ipp"
+#include "./impl/write_seq.ipp"

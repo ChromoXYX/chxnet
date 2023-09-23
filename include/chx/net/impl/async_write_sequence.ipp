@@ -5,8 +5,13 @@
 #include "../detail/sfinae_placeholder.hpp"
 #include "../io_context.hpp"
 #include "../buffer.hpp"
+#include "../async_combine.hpp"
 
 namespace chx::net::detail {
+// now, stream.async_write_some(seq) ->  not managed
+//      net::async_write_sequence(seq) ->    managed
+//      net::async_write_sequence_exactly -> managed
+
 namespace tags {
 struct async_write_seq {};
 }  // namespace tags
@@ -247,92 +252,48 @@ template <> struct async_operation<tags::async_write_seq> {
         }
     }
 
-    template <typename FlatSequence, typename GeneratedCompletionToken>
-    struct write_seq2 : GeneratedCompletionToken {
-        FlatSequence flat_sequence;
-        template <typename FS, typename GCT>
-        write_seq2(FS&& fs, GCT&& gct)
-            : flat_sequence(std::forward<FS>(fs)),
-              GeneratedCompletionToken(std::forward<GCT>(gct)) {}
-    };
-    template <typename FlatSequence, typename GeneratedCompletionToken>
-    write_seq2(FlatSequence&&, GeneratedCompletionToken&&)
-        -> write_seq2<std::remove_reference_t<FlatSequence>,
-                      std::remove_reference_t<GeneratedCompletionToken>>;
+    template <typename Stream, typename Sequence> struct operation {
+        template <typename Cntl> using rebind = operation;
 
-    template <typename SequenceRef, typename BindCompletionToken,
-              typename UseWritev>
-    struct write_seq1 {
-        BindCompletionToken bind_completion_token;
-        SequenceRef sequence_ref;
-        io_context::task_t* task;
-        int fd;
+        Stream stream;
+        Sequence sequence;
+        std::invoke_result_t<decltype(fill_iov<std::decay_t<Sequence>>),
+                             std::decay_t<Sequence>>
+            iov_arr;
 
-        using attribute_type = attribute<async_token>;
+        template <typename STRM, typename Seq>
+        operation(STRM&& strm, Seq&& seq)
+            : stream(std::forward<STRM>(strm)),
+              sequence(std::forward<Seq>(seq)), iov_arr(fill_iov(sequence)) {}
 
-        template <typename BCT, typename SR, typename UW>
-        write_seq1(BCT&& bct, SR&& sr, int f, UW&&)
-            : bind_completion_token(std::forward<BCT>(bct)),
-              sequence_ref(std::forward<SR>(sr)), fd(f) {}
-
-        template <typename FinalFunctor>
-        decltype(auto) generate_token(io_context::task_t* t,
-                                      FinalFunctor&& final_functor) {
-            task = t;
-            return write_seq2(
-                fill_iov(std::forward<SequenceRef>(sequence_ref)),
-                async_token_generate(
-                    t, std::forward<FinalFunctor>(final_functor),
-                    std::forward<BindCompletionToken>(bind_completion_token)));
+        template <typename Cntl> void operator()(Cntl& cntl) {
+            stream.async_write_some(iov_arr, cntl.next());
         }
 
-        template <typename TypeIdentity>
-        decltype(auto) get_init(TypeIdentity ti) {
-            auto* sqe = task->get_associated_io_context().get_sqe(task);
-            auto* d = static_cast<typename TypeIdentity::type*>(
-                task->get_underlying_data());
-            if constexpr (UseWritev::value) {
-                io_uring_prep_writev(sqe, fd, d->flat_sequence.data(),
-                                     d->flat_sequence.size(), 0);
-            } else {
-                io_uring_prep_readv(sqe, fd, d->flat_sequence.data(),
-                                    d->flat_sequence.size(), 0);
-            }
-            return async_token_init(
-                ti, std::forward<BindCompletionToken>(bind_completion_token));
+        template <typename Cntl>
+        void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
+            cntl.complete(e, s);
         }
     };
-    template <typename SequenceRef, typename BindCompletionToken, typename UW>
-    write_seq1(BindCompletionToken&&, SequenceRef&&, int, UW&&)
-        -> write_seq1<SequenceRef&&, BindCompletionToken&&, std::decay_t<UW>>;
-
-    template <typename CompletionToken>
-    decltype(auto) operator()(io_context* ctx,
-                              CompletionToken&& completion_token) {
-        auto* task = ctx->acquire();
-        return async_token_init(
-            task->__M_token.emplace(async_token_generate(
-                task,
-                [](auto& token, io_context::task_t* self) mutable -> int {
-                    token(self->__M_ec,
-                          static_cast<std::size_t>(self->__M_res));
-                    return 0;
-                },
-                completion_token)),
-            completion_token);
-    }
+    template <typename Stream, typename Sequence>
+    operation(Stream&&, Sequence&&) -> operation<
+        std::conditional_t<std::is_lvalue_reference_v<Stream>, Stream&&,
+                           std::remove_reference_t<Stream>>,
+        std::conditional_t<std::is_lvalue_reference_v<Sequence>, Sequence&&,
+                           std::remove_reference_t<Sequence>>>;
 };
 }  // namespace chx::net::detail
 
 template <typename Stream, typename Sequence, typename CompletionToken>
 decltype(auto)
-chx::net::async_write_sequence(Stream& stream, Sequence&& sequence,
+chx::net::async_write_sequence(Stream&& stream, Sequence&& sequence,
                                CompletionToken&& completion_token) {
-    return detail::async_operation<detail::tags::async_write_seq>()(
-        &stream.get_associated_io_context(),
-        detail::async_operation<detail::tags::async_write_seq>::write_seq1(
-            detail::async_token_bind<const std::error_code&, std::size_t>(
-                std::forward<CompletionToken>(completion_token)),
-            std::forward<Sequence>(sequence), stream.native_handler(),
-            std::true_type{}));
+    using operation_type =
+        decltype(detail::async_operation<detail::tags::async_write_seq>::
+                     operation(stream, std::forward<Sequence>(sequence)));
+    return async_combine<const std::error_code&, std::size_t>(
+        stream.get_associated_io_context(),
+        std::forward<CompletionToken>(completion_token),
+        detail::type_identity<operation_type>{}, stream,
+        std::forward<Sequence>(sequence));
 }

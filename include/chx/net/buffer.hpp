@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bits/types/struct_iovec.h>
 #include <cstddef>
 #include <type_traits>
 #include <utility>
@@ -45,6 +46,9 @@ class mutable_buffer {
     explicit constexpr mutable_buffer(T (&b)[Size],
                                       std::size_t size) noexcept(true)
         : __M_data(b), __M_sz(size) {}
+
+    explicit constexpr mutable_buffer(struct iovec& io) noexcept(true)
+        : __M_data(io.iov_base), __M_sz(io.iov_len) {}
 
     template <
         typename Container,
@@ -95,6 +99,9 @@ class const_buffer {
     explicit constexpr const_buffer(const T (&b)[Size],
                                     std::size_t size) noexcept(true)
         : __M_data(b), __M_sz(size) {}
+
+    explicit constexpr const_buffer(const struct iovec& io) noexcept(true)
+        : __M_data(io.iov_base), __M_sz(io.iov_len) {}
 
     template <typename Container,
               typename = std::enable_if_t<std::is_constructible_v<

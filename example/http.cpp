@@ -98,18 +98,17 @@ struct http_state_machine : std::enable_shared_from_this<http_state_machine> {
         resp[0].append(std::to_string(resp[1].size()));
         resp[0].append("\r\n\r\n");
 
-        net::async_write_sequence_managed(
-            sock, std::move(resp),
-            [self = shared_from_this()](const std::error_code& e,
-                                        std::size_t s) {
-                self->headers.clear();
-                if (e) {
-                    std::cerr << "failed to response\n";
-                } else {
-                    llhttp_reset(&self->parser);
-                    self->consume();
-                }
-            });
+        net::async_write_sequence(sock, std::move(resp),
+                                  [self = shared_from_this()](
+                                      const std::error_code& e, std::size_t s) {
+                                      self->headers.clear();
+                                      if (e) {
+                                          std::cerr << "failed to response\n";
+                                      } else {
+                                          llhttp_reset(&self->parser);
+                                          self->consume();
+                                      }
+                                  });
     }
 
     net::ip::tcp::socket sock;

@@ -11,32 +11,12 @@ struct write_seq_exactly {};
 
 template <> struct async_operation<tags::write_seq_exactly> {
     template <typename StreamRef, typename FlatSequence,
-              typename BindCompletionToken>
-    static decltype(auto)
-    async_write_seq2_2(StreamRef& sr, FlatSequence& flat_seq,
-                       BindCompletionToken&& completion_token) {
-        auto [sqe, task] = sr.get_associated_io_context().get();
-        io_uring_prep_writev(sqe, sr.native_handler(), flat_seq.data(),
-                             flat_seq.size(), 0);
-        return async_token_init(
-            task->__M_token.emplace(async_token_generate(
-                task,
-                [](auto& token, io_context::task_t* self) -> int {
-                    token(self->__M_ec, self->__M_res);
-                    return 0;
-                },
-                completion_token)),
-            completion_token);
-    }
-    template <typename StreamRef, typename FlatSequence,
               typename CompletionToken>
-    static decltype(auto) async_write_seq2(StreamRef& sr,
+    static decltype(auto) async_write_seq3(StreamRef& sr,
                                            FlatSequence& flat_seq,
                                            CompletionToken&& completion_token) {
-        return async_write_seq2_2(
-            sr, flat_seq,
-            async_token_bind<const std::error_code&, std::size_t>(
-                std::forward<CompletionToken>(completion_token)));
+        return sr.async_write_some(
+            flat_seq, std::forward<CompletionToken>(completion_token));
     }
 
     template <typename Stream, typename RealSequence>
@@ -64,7 +44,7 @@ template <> struct async_operation<tags::write_seq_exactly> {
         std::size_t total_size = 0;
 
         template <typename Cntl> void operator()(Cntl& cntl) {
-            async_write_seq2(stream, flat_sequence, cntl.next());
+            async_write_seq3(stream, flat_sequence, cntl.next());
         }
         template <typename Cntl>
         void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
@@ -76,7 +56,7 @@ template <> struct async_operation<tags::write_seq_exactly> {
                     }
                     transferred += s;
                     flat_sequence.front().iov_len -= s;
-                    async_write_seq2(stream, flat_sequence, cntl.next());
+                    async_write_seq3(stream, flat_sequence, cntl.next());
                 } else {
                     cntl.complete(e, total_size);
                 }
@@ -99,13 +79,19 @@ template <typename Stream, typename Sequence, typename CompletionToken>
 decltype(auto)
 chx::net::async_write_sequence_exactly(Stream&& stream, Sequence&& sequence,
                                        CompletionToken&& completion_token) {
-    using operation_type =
-        decltype(detail::async_operation<detail::tags::write_seq_exactly>::
-                     exactly_seq_managed(std::forward<Stream>(stream),
-                                         std::forward<Sequence>(sequence)));
-    return async_combine<const std::error_code&, std::size_t>(
-        stream.get_associated_io_context(),
-        std::forward<CompletionToken>(completion_token),
-        detail::type_identity<operation_type>(), std::forward<Stream>(stream),
-        std::forward<Sequence>(sequence));
+    if constexpr (!check_attr<std::decay_t<Stream>, detail::no_short_write>()) {
+        using operation_type =
+            decltype(detail::async_operation<detail::tags::write_seq_exactly>::
+                         exactly_seq_managed(std::forward<Stream>(stream),
+                                             std::forward<Sequence>(sequence)));
+        return async_combine<const std::error_code&, std::size_t>(
+            stream.get_associated_io_context(),
+            std::forward<CompletionToken>(completion_token),
+            detail::type_identity<operation_type>(),
+            std::forward<Stream>(stream), std::forward<Sequence>(sequence));
+    } else {
+        return net::async_write_sequence(
+            stream, std::forward<Sequence>(sequence),
+            std::forward<CompletionToken>(completion_token));
+    }
 }
