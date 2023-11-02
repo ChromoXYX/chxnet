@@ -571,6 +571,7 @@ struct when_any_impl {
                 if (target.connected()) {
                     target.disconnect();
                 }
+                disconnect_all<Idx + 1>();
             }
         }
 
