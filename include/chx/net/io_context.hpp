@@ -90,13 +90,14 @@ class io_context : CHXNET_NONCOPYABLE {
     std::size_t __M_dyn_total = 0;
     std::size_t __M_dyn_end = 0;
 
-    std::queue<std::unique_ptr<detail::basic_token_storage<void(), 48>>>
-        __M_mt_tasks;
-    // std::atomic_flag __M_mt_closed = ATOMIC_FLAG_INIT;
-    std::atomic_bool __M_mt_destruct = false;
-    // alignas(64) std::atomic_flag __M_mt_flag = ATOMIC_FLAG_INIT;
-    alignas(64) std::atomic_bool __M_mt_flag2 = false;
-    alignas(64) std::mutex __M_mt_mutex;
+    // std::queue<std::unique_ptr<detail::basic_token_storage<void(), 48>>>
+    //     __M_mt_tasks;
+    // // std::atomic_flag __M_mt_closed = ATOMIC_FLAG_INIT;
+    // std::atomic_bool __M_mt_destruct = false;
+    // // alignas(64) std::atomic_flag __M_mt_flag = ATOMIC_FLAG_INIT;
+    // alignas(64) std::atomic_bool __M_mt_flag2 = false;
+    // alignas(64) std::mutex __M_mt_mutex;
+    bool __M_destruct = false;
 
     static_assert(
         std::is_nothrow_destructible_v<__task_t> &&
@@ -315,7 +316,8 @@ class io_context : CHXNET_NONCOPYABLE {
      *
      */
     ~io_context() {
-        __M_mt_destruct.store(true);
+        // __M_mt_destruct.store(true);
+        __M_destruct = true;
         try {
             while (!is_stopped() && (!__M_dynamic_task_queue.empty())) {
                 __async_cancel_all();
@@ -337,35 +339,6 @@ class io_context : CHXNET_NONCOPYABLE {
     void run() {
         if (!is_stopped()) {
             __run();
-        }
-    }
-
-    void run_mt() {
-        if (!is_stopped()) {
-            if (__builtin_expect(__M_mt_flag2.load(std::memory_order_relaxed),
-                                 0)) {
-                decltype(__M_mt_tasks) __copied_tasks;
-                {
-                    std::lock_guard __lg(__M_mt_mutex);
-                    __copied_tasks = std::move(__M_mt_tasks);
-                    __M_mt_flag2.store(false, std::memory_order_relaxed);
-                }
-                while (!__copied_tasks.empty()) {
-                    (*__copied_tasks.front())();
-                    __copied_tasks.pop();
-                }
-            }
-            __run();
-        }
-    }
-
-    template <typename Fn> friend void post(io_context& ctx, Fn&& fn) {
-        if (!ctx.__M_mt_destruct.load()) {
-            std::lock_guard __lg(ctx.__M_mt_mutex);
-            ctx.__M_mt_tasks.emplace(
-                new decltype(__M_mt_tasks)::value_type::element_type(
-                    std::forward<Fn>(fn)));
-            ctx.__M_mt_flag2.store(true, std::memory_order_relaxed);
         }
     }
 
