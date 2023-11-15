@@ -36,7 +36,7 @@ class mapped_file : CHXNET_NONCOPYABLE {
         return *this;
     }
 
-    constexpr unsigned char* data() noexcept(true) {
+    constexpr unsigned char* data() const noexcept(true) {
         return static_cast<unsigned char*>(__M_ptr);
     }
     constexpr std::size_t size() noexcept(true) { return __M_sz; }
@@ -46,7 +46,7 @@ class mapped_file : CHXNET_NONCOPYABLE {
         unmap(e);
         if (!e) {
             __M_ptr = ::mmap64(nullptr, file_size, prot, flags,
-                             fd.native_handler(), offset);
+                               fd.native_handler(), offset);
             if (__M_ptr != MAP_FAILED) {
                 __M_sz = file_size;
                 return;
@@ -87,6 +87,44 @@ class mapped_file : CHXNET_NONCOPYABLE {
         if (e) {
             __CHXNET_THROW_EC(e);
         }
+    }
+
+    constexpr mutable_buffer subview(std::size_t pos,
+                                     std::size_t len) noexcept(true) {
+        return mutable_buffer{data() + pos, len};
+    }
+    constexpr const_buffer subview(std::size_t pos, std::size_t len) const
+        noexcept(true) {
+        return const_buffer{data() + pos, len};
+    }
+};
+
+template <typename F> class ref_fn {
+    F& __M_fn;
+
+  public:
+    constexpr ref_fn(F& f) noexcept(true) : __M_fn(f) {}
+
+    template <typename... Args>
+    decltype(auto) operator()(Args&&... args) noexcept(
+        std::is_nothrow_invocable_v<std::decay_t<F>, Args&&...>) {
+        return __M_fn(std::forward<Args>(args)...);
+    }
+};
+
+template <typename F, typename... Args> class fixed_ref_fn {
+    F& __M_f;
+
+  public:
+    template <template <typename> typename TypeIdentity>
+    constexpr fixed_ref_fn(F& f, TypeIdentity<Args>...) noexcept(true)
+        : __M_f(f) {}
+    constexpr fixed_ref_fn(F& f) noexcept(true) : __M_f(f) {}
+
+    std::invoke_result_t<std::decay_t<F>, Args&&...>
+    operator()(Args&&... args) noexcept(
+        std::is_nothrow_invocable_v<std::decay_t<F>, Args&&...>) {
+        return __M_f(std::forward<Args>(args)...);
     }
 };
 }  // namespace chx::net
