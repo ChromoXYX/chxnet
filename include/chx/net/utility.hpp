@@ -127,4 +127,25 @@ template <typename F, typename... Args> class fixed_ref_fn {
         return __M_f(std::forward<Args>(args)...);
     }
 };
+
+template <typename Container> class carrier {
+    Container __M_c;
+    const std::size_t __M_offset, __M_len;
+
+  public:
+    using value_type = unsigned char;
+
+    carrier(Container&& c, std::size_t offset, std::size_t len)
+        : __M_c(std::move(c)), __M_offset(offset), __M_len(len) {}
+    carrier(carrier&&) = default;
+
+    constexpr std::size_t size() const noexcept(true) { return __M_len; }
+    constexpr value_type* data() noexcept(true) {
+        return static_cast<unsigned char*>(buffer(__M_c).data()) + __M_offset;
+    }
+    constexpr const value_type* data() const noexcept(true) {
+        return static_cast<const unsigned char*>(buffer(__M_c).data()) +
+               __M_offset;
+    }
+};
 }  // namespace chx::net
