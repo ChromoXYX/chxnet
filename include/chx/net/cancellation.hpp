@@ -116,25 +116,25 @@ template <typename BindCompletionToken>
 cancellation_ops(cancellation_signal&, BindCompletionToken&&)
     -> cancellation_ops<std::remove_reference_t<BindCompletionToken>>;
 
-template <typename RefCompletionToken> struct cancellation_inter {
+template <typename NoRefCompletionToken> struct cancellation_inter {
     using attribute_type = attribute<async_token>;
 
-    RefCompletionToken ref_completion_token;
+    NoRefCompletionToken noref_completion_token;
     cancellation_signal& signal;
 
     template <typename RCT>
     constexpr cancellation_inter(cancellation_signal& s,
                                  RCT&& rct) noexcept(true)
-        : signal(s), ref_completion_token(std::forward<RCT>(rct)) {}
+        : signal(s), noref_completion_token(std::forward<RCT>(rct)) {}
 
     template <typename... S> decltype(auto) bind() {
-        return cancellation_ops(signal,
-                                async_token_bind<S...>(ref_completion_token));
+        return cancellation_ops(
+            signal, async_token_bind<S...>(std::move(noref_completion_token)));
     }
 };
 template <typename RefCompletionToken>
 cancellation_inter(cancellation_signal&, RefCompletionToken&&)
-    -> cancellation_inter<RefCompletionToken&&>;
+    -> cancellation_inter<std::remove_reference_t<RefCompletionToken>>;
 }  // namespace detail
 
 template <typename CompletionToken>
