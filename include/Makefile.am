@@ -4,6 +4,7 @@ chx/net/exception.hpp \
 chx/net/basic_socket.hpp \
 chx/net/managed.hpp \
 chx/net/as_tuple.hpp \
+chx/net/basic_fixed_timer.hpp \
 chx/net/ktimer.hpp \
 chx/net/utility.hpp \
 chx/net/async_write_sequence_exactly.hpp \
@@ -48,6 +49,7 @@ chx/net/impl/file_descriptor.ipp \
 chx/net/impl/tcp_acceptor.ipp \
 chx/net/impl/async_read_until.ipp \
 chx/net/impl/async_read.ipp \
+chx/net/impl/basic_fixed_timer.ipp \
 chx/net/impl/async_write_some_exactly.ipp \
 chx/net/impl/async_write_sequence_exactly.ipp \
 chx/net/impl/file.ipp \

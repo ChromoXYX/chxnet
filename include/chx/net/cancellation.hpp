@@ -33,6 +33,7 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
     template <typename BindCompletionToken>
     friend struct detail::cancellation_ops;
     friend struct detail::cancellation_assign;
+    template <typename Tag> friend struct detail::async_operation;
 
     cancellation_signal() = default;
     cancellation_signal(cancellation_signal&&) = default;
