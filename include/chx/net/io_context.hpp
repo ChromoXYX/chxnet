@@ -58,10 +58,11 @@ class io_context : CHXNET_NONCOPYABLE {
         bool __M_persist = false;
         bool __M_notif = false;
         bool __M_cancel_invoke = false;
-        bool __M_option5 = true;
-        bool __M_option6 = true;
-        bool __M_option7 = true;
+        bool __M_option5 = false;
+        bool __M_option6 = false;
+        bool __M_option7 = false;
         std::size_t __M_dyn_idx = 0;
+        constexpr static std::size_t __END = -1;
 
         std::error_code __M_ec;
         int __M_res;
@@ -135,35 +136,29 @@ class io_context : CHXNET_NONCOPYABLE {
         }
     }
 
-    void submit() {
-        if (int r = io_uring_submit(&__M_ring); r >= 0) {
-            return;
-        } else {
-            __CHXNET_THROW_WITH(-r, bad_io_context_exec);
-        }
-    }
-
     void release(__task_t* task) noexcept(true) {
-        --__M_dyn_total;
-        if (__M_dyn_total == 0) {
-            __M_dyn_end = 0;
-            __M_dynamic_task_queue.clear();
-            return;
-        }
-        task->__M_avail = true;
-        if (task->__M_dyn_idx == __M_dyn_end) {
-            std::size_t idx = __M_dyn_end - 1;
-            for (; idx; --idx) {
-                if (!__M_dynamic_task_queue[idx]->__M_avail) {
-                    break;
-                }
+        if (task->__M_dyn_idx != task->__END) {
+            --__M_dyn_total;
+            if (__M_dyn_total == 0) {
+                __M_dyn_end = 0;
+                __M_dynamic_task_queue.clear();
+                return;
             }
-            __M_dyn_end = idx;
-            __M_dynamic_task_queue.erase(__M_dynamic_task_queue.begin() + idx +
-                                             1,
-                                         __M_dynamic_task_queue.end());
-        } else {
-            task->reset();
+            task->__M_avail = true;
+            if (task->__M_dyn_idx == __M_dyn_end) {
+                std::size_t idx = __M_dyn_end - 1;
+                for (; idx; --idx) {
+                    if (!__M_dynamic_task_queue[idx]->__M_avail) {
+                        break;
+                    }
+                }
+                __M_dyn_end = idx;
+                __M_dynamic_task_queue.erase(__M_dynamic_task_queue.begin() +
+                                                 idx + 1,
+                                             __M_dynamic_task_queue.end());
+            } else {
+                task->reset();
+            }
         }
     }
 
@@ -339,6 +334,14 @@ class io_context : CHXNET_NONCOPYABLE {
     void run() {
         if (!is_stopped()) {
             __run();
+        }
+    }
+
+    void submit() {
+        if (int r = io_uring_submit(&__M_ring); r >= 0) {
+            return;
+        } else {
+            __CHXNET_THROW_WITH(-r, bad_io_context_exec);
         }
     }
 

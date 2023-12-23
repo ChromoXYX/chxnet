@@ -29,6 +29,7 @@ chx/net/dynamic_buffer.hpp \
 chx/net/file_descriptor.hpp \
 chx/net/async_write_sequence.hpp \
 chx/net/async_read.hpp \
+chx/net/timeout.hpp \
 chx/net/io_context.hpp \
 chx/net/ip.hpp \
 chx/net/file.hpp \
@@ -36,6 +37,7 @@ chx/net/detail/basic_token_storage.hpp \
 chx/net/detail/noncopyable.hpp \
 chx/net/detail/task_aware.hpp \
 chx/net/detail/type_identity.hpp \
+chx/net/detail/anchor.hpp \
 chx/net/detail/sfinae_placeholder.hpp \
 chx/net/impl/general_async_close.hpp \
 chx/net/impl/general_ip_socket_io.hpp \
@@ -45,6 +47,7 @@ chx/net/impl/tcp_socket.ipp \
 chx/net/impl/async_write_sequence.ipp \
 chx/net/impl/async_openat.ipp \
 chx/net/impl/udp_socket.ipp \
+chx/net/impl/timeout.ipp \
 chx/net/impl/file_descriptor.ipp \
 chx/net/impl/tcp_acceptor.ipp \
 chx/net/impl/async_read_until.ipp \

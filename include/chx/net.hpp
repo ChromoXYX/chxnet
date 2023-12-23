@@ -36,4 +36,5 @@
 #include "./net/async_write_some_exactly.hpp"
 #include "./net/async_openat.hpp"
 #include "./net/basic_fixed_timer.hpp"
+#include "./net/timeout.hpp"
 #include "./net/utility.hpp"
