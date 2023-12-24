@@ -107,7 +107,11 @@ template <typename BindCompletionToken> struct cancellation_ops {
     template <typename FinalFunctor>
     decltype(auto) generate_token(io_context::task_t* task,
                                   FinalFunctor&& final_functor) {
-        signal.assign(task);
+        if (task->__M_custom_cancellation) {
+            (*task->__M_custom_cancellation)(signal);
+        } else {
+            signal.assign(task);
+        }
         return async_token_generate(task,
                                     std::forward<FinalFunctor>(final_functor),
                                     bind_completion_token);

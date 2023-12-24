@@ -427,7 +427,7 @@ template <typename T> struct awaitable_impl : CHXNET_NONCOPYABLE {
     constexpr void disconnect() noexcept(true) {
         if (connected()) {
             __M_view->pimpl = nullptr;
-            __M_view->pthen = nullptr;
+            // __M_view->pthen = nullptr;
             __M_view->h = {};
             __M_view->pthen.reset();
             __M_view = nullptr;
@@ -508,12 +508,20 @@ struct when_any_impl {
 
             then_impl(await_collection* s) noexcept(true) : self(s) {}
 
+            template <std::size_t Idx> void disarm() {
+                if constexpr (Idx < sizeof...(Awaitables)) {
+                    if constexpr (Idx != TpIdx) {
+                        auto& target_tp = std::get<Idx>(self->await_tp);
+                        target_tp.disconnect();
+                    }
+                    disarm<Idx + 1>();
+                }
+            }
+
             template <std::size_t Idx> void exclude() {
                 if constexpr (Idx < sizeof...(Awaitables)) {
                     if constexpr (Idx != TpIdx) {
                         self->can[Idx].emit();
-                        auto& target_tp = std::get<Idx>(self->await_tp);
-                        target_tp.disconnect();
                     }
                     exclude<Idx + 1>();
                 }
@@ -521,6 +529,7 @@ struct when_any_impl {
 
             void reach() override {
                 self->first_idx = TpIdx + 1;
+                disarm<0>();
                 exclude<0>();
                 auto& target = std::get<TpIdx>(self->await_tp);
                 if (target.__M_v.index() == 1) {

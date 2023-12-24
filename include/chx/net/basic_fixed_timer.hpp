@@ -14,14 +14,16 @@ struct fixed_timer {};
 struct fixed_timeout_timer {};
 }  // namespace detail::tags
 
-template <typename Timer> struct fixed_timer_cancellation;
+namespace detail {
+constexpr std::chrono::time_point<std::chrono::system_clock> __zero_time_point;
+}
 
 template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
-    friend struct detail::async_operation<detail::tags::fixed_timer>;
-    friend struct fixed_timer_cancellation<basic_fixed_timer>;
+    template <typename T> friend struct detail::async_operation;
 
     io_context* __M_ctx = nullptr;
     std::chrono::nanoseconds __M_interval;
+    std::multimap<io_context::task_t*, detail::cancellation_base*> __M_tracker;
     Timer __M_timer;
 
     std::multimap<std::chrono::time_point<std::chrono::system_clock>,
@@ -54,15 +56,16 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
         __M_timer.async_wait([this](const std::error_code& e) {
             if (!e) {
                 auto curr = std::chrono::system_clock::now();
-                for (auto& [k, v] : __M_set) {
-                    if (k < curr) {
-                        v->__M_option5 = true;
-                        v->__M_token(v.get());
-                    } else {
-                        break;
-                    }
+                auto lower = __M_set.lower_bound(detail::__zero_time_point);
+                for (auto ite = lower;
+                     ite != __M_set.end() && ite->first < curr; ++ite) {
+                    ite->second->__M_ec.clear();
+                    ite->second->__M_token(ite->second.get());
                 }
-                __M_set.erase(__M_set.begin(), __M_set.lower_bound(curr));
+                lower = __M_set.lower_bound(detail::__zero_time_point);
+                if (lower != __M_set.end()) {
+                    __M_set.erase(lower, __M_set.lower_bound(curr));
+                }
                 listen();
             }
         });
@@ -75,12 +78,12 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
 using fixed_timer = basic_fixed_timer<ktimer>;
 
 class fixed_timeout_timer : CHXNET_NONCOPYABLE {
-    friend struct detail::async_operation<detail::tags::fixed_timer>;
-    friend struct fixed_timer_cancellation<fixed_timeout_timer>;
+    template <typename T> friend struct detail::async_operation;
     io_context* __M_ctx;
     std::multimap<std::chrono::time_point<std::chrono::system_clock>,
                   std::unique_ptr<io_context::task_t>>
         __M_set;
+    std::multimap<io_context::task_t*, detail::cancellation_base*> __M_tracker;
     std::chrono::nanoseconds __M_interval;
 
     cancellation_signal __M_signal;
@@ -102,7 +105,26 @@ class fixed_timeout_timer : CHXNET_NONCOPYABLE {
             __M_interval);
     }
 
-    void listen();
+    void listen() {
+        async_timeout(
+            get_associated_io_context(), __M_interval,
+            bind_cancellation_signal(__M_signal, [&](const std::error_code& e) {
+                if (!e) {
+                    auto curr = std::chrono::system_clock::now();
+                    auto lower = __M_set.lower_bound(detail::__zero_time_point);
+                    for (auto ite = lower;
+                         ite != __M_set.end() && ite->first < curr; ++ite) {
+                        ite->second->__M_ec.clear();
+                        ite->second->__M_token(ite->second.get());
+                    }
+                    lower = __M_set.lower_bound(detail::__zero_time_point);
+                    if (lower != __M_set.end()) {
+                        __M_set.erase(lower, __M_set.lower_bound(curr));
+                    }
+                    listen();
+                }
+            }));
+    }
 
     template <typename Rep, typename Period, typename CompletionToken>
     decltype(auto) async_register(const std::chrono::duration<Rep, Period>& dur,

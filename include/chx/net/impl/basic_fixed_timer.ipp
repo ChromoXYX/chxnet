@@ -3,115 +3,124 @@
 #include "../basic_fixed_timer.hpp"
 
 namespace chx::net {
-template <typename Timer>
-struct fixed_timer_cancellation : detail::cancellation_base {
-    Timer* timer;
-    std::chrono::time_point<std::chrono::system_clock> tp;
-    io_context::task_t* task;
+namespace detail {
+namespace tags {
+struct fxd_tmr_cncl_cntl {};
+}  // namespace tags
+template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
+    template <typename Timer> struct controller;
+    template <typename Timer> struct fxd_tmr_cncl : detail::cancellation_base {
+        controller<Timer>* controller_ = nullptr;
 
-    using container_type = decltype(timer->__M_set);
+        Timer* timer() { return controller_->timer; }
+        io_context::task_t* task() { return controller_->task; }
 
-    fixed_timer_cancellation(
-        Timer* t, std::chrono::time_point<std::chrono::system_clock> k,
-        io_context::task_t* v) noexcept(true)
-        : timer(t), tp(k), task(v) {}
+        fxd_tmr_cncl(controller<Timer>* p) : controller_(p) {}
+        ~fxd_tmr_cncl() { release(); }
 
-    constexpr void release() noexcept(true) {
-        timer = nullptr;
-        task = nullptr;
-    }
-    constexpr bool valid() noexcept(true) {
-        return timer != nullptr && task != nullptr;
-    }
-
-    void operator()() override {
-        if (auto ite = find_position(); ite != timer->__M_set.end()) {
-            task->__M_token(task);
-            timer->__M_set.erase(ite);
-            release();
-        }
-    }
-
-    typename container_type::iterator find_position() noexcept(true) {
-        auto [begin, end] = timer->__M_set.equal_range(tp);
-        for (auto ite = begin; ite != end; ++ite) {
-            if (ite->second.get() == task) {
-                return ite;
+        void release() {
+            if (valid()) {
+                for (auto ite = controller_->tracker().lower_bound(task());
+                     ite != controller_->tracker().end() &&
+                     ite->first == task();
+                     ++ite) {
+                    if (ite->second == this) {
+                        controller_->tracker().erase(ite);
+                        break;
+                    }
+                }
+                controller_ = nullptr;
             }
         }
-        return timer->__M_set.end();
-    }
+        constexpr bool valid() noexcept(true) { return controller_ != nullptr; }
 
-    void
-    update(const std::chrono::time_point<std::chrono::system_clock>& new_tp) {
-        try {
-            typename container_type::node_type node =
-                timer->__M_set.extract(find_position());
-            node.key() = new_tp;
-            timer->__M_set.insert(std::move(node));
-            tp = new_tp;
-        } catch (...) {
-            release();
-            std::rethrow_exception(std::current_exception());
+        void operator()() override {
+            if (valid())
+                if (auto ite = find_position(); ite != timer()->__M_set.end()) {
+                    assign_ec(task()->__M_ec, errc::operation_canceled);
+                    task()->__M_token(task());
+                    timer()->__M_set.erase(ite);
+                    release();
+                }
         }
-    }
 
-    template <typename Rep, typename Period>
-    void update(const std::chrono::duration<Rep, Period>& dur) {
-        update(std::chrono::system_clock::now() + dur);
-    }
+        auto find_position() noexcept(true) {
+            auto [begin, end] =
+                timer()->__M_set.equal_range(controller_->time_point);
+            for (auto ite = begin; ite != end; ++ite) {
+                if (ite->second.get() == task()) {
+                    return ite;
+                }
+            }
+            return timer()->__M_set.end();
+        }
+
+        void update(
+            const std::chrono::time_point<std::chrono::system_clock>& new_tp) {
+            try {
+                auto node = timer()->__M_set.extract(find_position());
+                node.key() = new_tp;
+                timer()->__M_set.insert(std::move(node));
+                controller_->time_point = new_tp;
+            } catch (...) {
+                release();
+                std::rethrow_exception(std::current_exception());
+            }
+        }
+
+        template <typename Rep, typename Period>
+        void update(const std::chrono::duration<Rep, Period>& dur) {
+            update(std::chrono::system_clock::now() + dur);
+        }
+    };
+
+    template <typename Timer> struct controller : custom_cancellation_base {
+        Timer* const timer;
+        io_context::task_t* const task;
+        std::chrono::time_point<std::chrono::system_clock> time_point;
+
+        controller(Timer* t, io_context::task_t* t2,
+                   const std::chrono::time_point<std::chrono::system_clock>& tp)
+            : timer(t), task(t2), time_point(tp) {}
+
+        constexpr auto& tracker() noexcept(true) { return timer->__M_tracker; }
+
+        ~controller() {
+            for (auto ite = tracker().lower_bound(task);
+                 ite != tracker().end() && ite->first == task; ++ite) {
+                static_cast<fxd_tmr_cncl<Timer>*>(ite->second)->controller_ =
+                    nullptr;
+            }
+            tracker().erase(task);
+        }
+
+        void operator()(cancellation_signal& signal) override {
+            auto* p = new fxd_tmr_cncl<Timer>(this);
+            tracker().emplace(task, p);
+            signal.emplace(p);
+        }
+    };
 };
+}  // namespace detail
+
+template <typename Timer>
+constexpr detail::async_operation<
+    detail::tags::fxd_tmr_cncl_cntl>::fxd_tmr_cncl<Timer>*
+fixed_timer_controller(Timer&, cancellation_signal& signal) noexcept(true) {
+    return static_cast<detail::async_operation<
+        detail::tags::fxd_tmr_cncl_cntl>::fxd_tmr_cncl<Timer>*>(signal.get());
+}
+template <typename Timer>
+constexpr detail::async_operation<
+    detail::tags::fxd_tmr_cncl_cntl>::fxd_tmr_cncl<Timer>*
+safe_fixed_timer_controller(Timer&, cancellation_signal& signal) {
+    return dynamic_cast<detail::async_operation<
+        detail::tags::fxd_tmr_cncl_cntl>::fxd_tmr_cncl<Timer>*>(signal.get());
+}
 }  // namespace chx::net
 
 namespace chx::net::detail {
 template <> struct async_operation<tags::fixed_timer> {
-    template <typename BindCompletionToken> struct wrapper {
-        BindCompletionToken bind_completion_token;
-        cancellation_signal& signal;
-
-        template <typename BCT>
-        wrapper(BCT&& bct, cancellation_signal& s)
-            : bind_completion_token(std::forward<BCT>(bct)), signal(s) {}
-    };
-    template <typename BindCompletionToken>
-    wrapper(BindCompletionToken&&, cancellation_signal&)
-        -> wrapper<std::remove_reference_t<BindCompletionToken>>;
-
-    template <typename Timer, typename Duration, typename BindCompletionToken>
-    decltype(auto) operator()(
-        Timer* timer,
-        const std::chrono::time_point<std::chrono::system_clock, Duration>& tp,
-        wrapper<BindCompletionToken>&& wrapper) {
-
-        auto ite = timer->__M_set.insert(std::make_pair(
-            tp, std::make_unique<io_context::task_t>(timer->__M_ctx)));
-        io_context::task_t* task = ite->second.get();
-        task->__M_avail = true;
-        task->__M_cancel_invoke = true;
-        task->__M_option5 = false;
-        task->__M_additional = reinterpret_cast<std::uint64_t>(timer);
-
-        wrapper.signal.emplace(new fixed_timer_cancellation(timer, tp, task));
-
-        return async_token_init(
-            task->__M_token.emplace(async_token_generate(
-                task,
-                [](auto& token, io_context::task_t* self) mutable {
-                    assert(self);
-                    if (self->__M_option5) {
-                        token(std::error_code{});
-                    } else {
-                        auto* timer =
-                            reinterpret_cast<Timer*>(self->__M_additional);
-                        token(make_ec(errc::operation_canceled));
-                    }
-                    return 0;
-                },
-                std::forward<BindCompletionToken>(
-                    wrapper.bind_completion_token))),
-            std::forward<BindCompletionToken>(wrapper.bind_completion_token));
-    }
-
     template <typename Timer, typename Duration, typename BindCompletionToken>
     decltype(auto) operator()(
         Timer* timer,
@@ -123,28 +132,21 @@ template <> struct async_operation<tags::fixed_timer> {
         io_context::task_t* task = ite->second.get();
         task->__M_avail = true;
         task->__M_cancel_invoke = true;
-        task->__M_option5 = false;
         task->__M_additional = reinterpret_cast<std::uint64_t>(timer);
+        task->__M_custom_cancellation.reset(
+            new async_operation<tags::fxd_tmr_cncl_cntl>::controller(timer,
+                                                                     task, tp));
         return async_token_init(
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* self) mutable {
                     assert(self);
-                    if (self->__M_option5) {
-                        token(std::error_code{});
-                    } else {
-                        auto* timer =
-                            reinterpret_cast<Timer*>(self->__M_additional);
-                        token(make_ec(errc::operation_canceled));
-                    }
+                    token(self->__M_ec);
                     return 0;
                 },
                 std::forward<BindCompletionToken>(bind_completion_token))),
             std::forward<BindCompletionToken>(bind_completion_token));
     }
-
-    template <typename T> struct is_wrapper : std::false_type {};
-    template <typename C> struct is_wrapper<wrapper<C>> : std::true_type {};
 };
 }  // namespace chx::net::detail
 
@@ -153,58 +155,22 @@ template <typename Rep, typename Period, typename CompletionToken>
 decltype(auto) chx::net::basic_fixed_timer<Timer>::async_register(
     const std::chrono::duration<Rep, Period>& dur,
     CompletionToken&& completion_token) {
-    if constexpr (!check_attr<detail::cancellation_attr,
-                              std::decay_t<CompletionToken>>()) {
-        return detail::async_operation<detail::tags::fixed_timer>()(
-            this, std::chrono::system_clock::now() + dur,
-            detail::async_token_bind<const std::error_code&>(
-                std::forward<CompletionToken>(completion_token)));
-    } else {
-        return detail::async_operation<detail::tags::fixed_timer>()(
-            this, std::chrono::system_clock::now() + dur,
-            detail::async_operation<detail::tags::fixed_timer>::wrapper(
-                detail::async_token_bind<const std::error_code&>(
-                    std::move(completion_token.noref_completion_token)),
-                completion_token.signal));
-    }
+    return detail::async_operation<detail::tags::fixed_timer>()(
+        this,
+        dur.count() != 0 ? (std::chrono::system_clock::now() + dur)
+                         : detail::__zero_time_point,
+        detail::async_token_bind<const std::error_code&>(
+            std::forward<CompletionToken>(completion_token)));
 }
 
 template <typename Rep, typename Period, typename CompletionToken>
 decltype(auto) chx::net::fixed_timeout_timer::async_register(
     const std::chrono::duration<Rep, Period>& dur,
     CompletionToken&& completion_token) {
-    if constexpr (!check_attr<detail::cancellation_attr,
-                              std::decay_t<CompletionToken>>()) {
-        return detail::async_operation<detail::tags::fixed_timer>()(
-            this, std::chrono::system_clock::now() + dur,
-            detail::async_token_bind<const std::error_code&>(
-                std::forward<CompletionToken>(completion_token)));
-    } else {
-        return detail::async_operation<detail::tags::fixed_timer>()(
-            this, std::chrono::system_clock::now() + dur,
-            detail::async_operation<detail::tags::fixed_timer>::wrapper(
-                detail::async_token_bind<const std::error_code&>(
-                    std::move(completion_token.noref_completion_token)),
-                completion_token.signal));
-    }
-}
-
-void chx::net::fixed_timeout_timer::listen() {
-    async_timeout(
-        get_associated_io_context(), __M_interval,
-        bind_cancellation_signal(__M_signal, [&](const std::error_code& e) {
-            if (!e) {
-                auto curr = std::chrono::system_clock::now();
-                for (auto& [k, v] : __M_set) {
-                    if (k < curr) {
-                        v->__M_option5 = true;
-                        v->__M_token(v.get());
-                    } else {
-                        break;
-                    }
-                }
-                __M_set.erase(__M_set.begin(), __M_set.lower_bound(curr));
-                listen();
-            }
-        }));
+    return detail::async_operation<detail::tags::fixed_timer>()(
+        this,
+        dur.count() != 0 ? (std::chrono::system_clock::now() + dur)
+                         : detail::__zero_time_point,
+        detail::async_token_bind<const std::error_code&>(
+            std::forward<CompletionToken>(completion_token)));
 }

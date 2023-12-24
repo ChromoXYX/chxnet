@@ -42,8 +42,7 @@ net::task task1() {
     auto awaitable2 = global_timer.async_register(
         std::chrono::seconds(2),
         bind_cancellation_signal(signal, net::as_tuple(net::use_coro)));
-    auto* ptr = static_cast<net::fixed_timer_cancellation<net::fixed_timer>*>(
-        signal.get());
+    auto* ptr = fixed_timer_controller(global_timer, signal);
     assert(ptr && ptr->valid());
     ptr->update(std::chrono::seconds(3));
     co_await awaitable2;
@@ -65,9 +64,7 @@ net::task task2() {
     auto awaitable1 =
         ftt.async_register(std::chrono::seconds(3),
                            bind_cancellation_signal(signal, net::use_coro));
-    auto* ptr =
-        static_cast<net::fixed_timer_cancellation<net::fixed_timeout_timer>*>(
-            signal.get());
+    auto* ptr = net::fixed_timer_controller(ftt, signal);
     assert(ptr && ptr->valid());
     ptr->update(std::chrono::seconds(1));
     co_await awaitable1;
@@ -100,6 +97,35 @@ net::task task3() {
     co_await awaitable;
 }
 
+net::task task4() {
+    print_current();
+    std::cout << "Task4 will test when_any and cancellation\n";
+    print_current();
+    std::cout << "Task4: now there are 2 clock. one is set to 10s, the other "
+                 "is set to 2s. and co_await when_any is used\n";
+    auto [val, idx] = co_await net::when_any(
+        global_timer.async_register(std::chrono::seconds(10), net::use_coro),
+        global_timer.async_register(std::chrono::seconds(2), net::use_coro));
+    assert(idx == 2 && val.index() == 2);
+    print_current();
+    std::cout << "Task4: the 2nd clock disarmed 1st clock successfully. now "
+                 "start again, but 1st clock will be disarmed after 1s.\n";
+    net::cancellation_signal signal;
+    auto awaitable = net::when_any(
+        global_timer.async_register(
+            std::chrono::seconds(10),
+            bind_cancellation_signal(signal, net::use_coro)),
+        global_timer.async_register(std::chrono::seconds(2), net::use_coro));
+    co_await global_timer.async_register(std::chrono::seconds(1),
+                                         net::use_coro);
+    signal.emit();
+    auto [val2, idx2] = co_await awaitable;
+    assert(idx2 == 1 && val2.index() == 0);
+    print_current();
+    std::cout << "Task4: for 1st clock: " << std::get<0>(val2).message()
+              << "\n";
+}
+
 void watch_dog(const std::error_code& e, net::ktimer& ktimer) {
     if (!e) {
         ktimer.expired_after(std::chrono::milliseconds(200));
@@ -129,6 +155,7 @@ int main() {
     co_spawn(ctx, task1(), net::detached);
     co_spawn(ctx, task2(), net::detached);
     co_spawn(ctx, task3(), net::detached);
+    co_spawn(ctx, task4(), net::detached);
 
     net::ktimer ktimer(ctx);
     watch_dog(std::error_code{}, ktimer);

@@ -32,11 +32,18 @@ class bad_io_context_exec : public exception {
     using exception::exception;
 };
 
+struct cancellation_signal;
+
 namespace detail {
 template <typename Tag> struct async_operation;
 namespace tags {
 struct use_delivery {};
 }  // namespace tags
+
+struct custom_cancellation_base {
+    virtual void operator()(cancellation_signal&) = 0;
+    virtual ~custom_cancellation_base() = default;
+};
 }  // namespace detail
 
 class io_context : CHXNET_NONCOPYABLE {
@@ -66,6 +73,9 @@ class io_context : CHXNET_NONCOPYABLE {
 
         std::error_code __M_ec;
         int __M_res;
+
+        std::unique_ptr<detail::custom_cancellation_base>
+            __M_custom_cancellation;
 
         detail::basic_token_storage<int(__task_t*), CHXNET_TOKEN_STORAGE_SIZE>
             __M_token;
