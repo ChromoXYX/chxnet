@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../timeout.hpp"
+#include "../cancellation.hpp"
 
 namespace chx::net::detail {
 namespace tags {
@@ -8,21 +9,30 @@ struct io_uring_timeout {};
 }  // namespace tags
 
 template <> struct async_operation<tags::io_uring_timeout> {
-    template <typename CompletionToken> struct wrapper : CHXNET_NONCOPYABLE {
+    template <typename CompletionToken> struct wrapper2 : CHXNET_NONCOPYABLE {
         CompletionToken completion_token;
-        timeout_handler& handler;
+        cancellation_signal& handler;
 
-        wrapper(wrapper&&) = default;
+        wrapper2(wrapper2&&) = default;
         template <typename CT>
-        wrapper(CT&& ct, timeout_handler& h)
+        wrapper2(CT&& ct, cancellation_signal& h)
             : completion_token(std::forward<CT>(ct)), handler(h) {}
     };
     template <typename CompletionToken>
-    wrapper(CompletionToken&&, timeout_handler&)
-        -> wrapper<std::remove_reference_t<CompletionToken>>;
+    wrapper2(CompletionToken&&, cancellation_signal&)
+        -> wrapper2<std::remove_reference_t<CompletionToken>>;
 
-    template <typename T> struct is_wrapper : std::false_type {};
-    template <typename T> struct is_wrapper<wrapper<T>> : std::true_type {};
+    template <typename CompletionToken>
+    static constexpr decltype(auto)
+    to_wrapper2(CompletionToken&& completion_token) {
+        if constexpr (check_attr<cancellation_attr,
+                                 std::decay_t<CompletionToken>>()) {
+            return wrapper2(std::move(completion_token.bind_completion_token),
+                            completion_token.signal);
+        } else {
+            return std::forward<CompletionToken>(completion_token);
+        }
+    }
 
     template <typename GeneratedCompletionToken>
     struct to2 : GeneratedCompletionToken {
@@ -73,8 +83,8 @@ template <> struct async_operation<tags::io_uring_timeout> {
         }
     };
     template <typename BindCompletionToken>
-    struct to1<wrapper<BindCompletionToken>> {
-        wrapper<BindCompletionToken> wrapper_;
+    struct to1<wrapper2<BindCompletionToken>> {
+        wrapper2<BindCompletionToken> wrapper_;
         std::chrono::nanoseconds dur;
         io_context::task_t* task = nullptr;
 
@@ -106,19 +116,18 @@ template <> struct async_operation<tags::io_uring_timeout> {
             auto* underlying = static_cast<typename TypeIdentity::type*>(
                 task->get_underlying_data());
             io_uring_prep_timeout(sqe, &underlying->ts, 0, 0);
-            wrapper_.handler.self = task;
+            wrapper_.handler.emplace(new timeout_cancellation(task));
             return async_token_init(ti, wrapper_.completion_token);
         }
     };
+
     template <typename T>
-    to1(wrapper<T>&&, const std::chrono::nanoseconds&) -> to1<wrapper<T>>;
+    to1(wrapper2<T>&&, const std::chrono::nanoseconds&) -> to1<wrapper2<T>>;
     template <typename T>
     to1(T&&, const std::chrono::nanoseconds&)
         -> to1<std::remove_reference_t<T>>;
 
     template <typename CompletionToken> struct to0 {
-        static_assert(!is_wrapper<std::decay_t<CompletionToken>>::value);
-
         CompletionToken completion_token;
         std::chrono::nanoseconds dur;
 
@@ -130,33 +139,11 @@ template <> struct async_operation<tags::io_uring_timeout> {
               dur(std::chrono::duration_cast<std::chrono::nanoseconds>(d)) {}
 
         template <typename... S> constexpr decltype(auto) bind() {
-            return to1(async_token_bind<S...>(
-                           std::forward<CompletionToken>(completion_token)),
+            return to1(to_wrapper2(async_token_bind<S...>(
+                           std::forward<CompletionToken>(completion_token))),
                        dur);
         }
     };
-    template <typename CompletionToken> struct to0<wrapper<CompletionToken>> {
-        wrapper<CompletionToken> wrapper_;
-        std::chrono::nanoseconds dur;
-        io_context::task_t* task = nullptr;
-
-        using attribute_type = attribute<async_token>;
-
-        template <typename T, typename Rep, typename Period>
-        to0(T&& t, const std::chrono::duration<Rep, Period>& d)
-            : wrapper_(std::forward<T>(t)),
-              dur(std::chrono::duration_cast<std::chrono::nanoseconds>(d)) {}
-
-        template <typename... S> constexpr decltype(auto) bind() {
-            return to1(wrapper(async_token_bind<S...>(
-                                   std::move(wrapper_.completion_token)),
-                               wrapper_.handler),
-                       dur);
-        }
-    };
-    template <typename T, typename Rep, typename Period>
-    to0(wrapper<T>&&, const std::chrono::duration<Rep, Period>&)
-        -> to0<wrapper<T>>;
     template <typename T, typename Rep, typename Period>
     to0(T&&, const std::chrono::duration<Rep, Period>&)
         -> to0<std::remove_reference_t<T>>;
@@ -227,8 +214,6 @@ template <> struct async_operation<tags::io_uring_timeout> {
         -> upd1<std::remove_reference_t<T>>;
 
     template <typename CompletionToken> struct upd0 {
-        static_assert(!is_wrapper<std::decay_t<CompletionToken>>::value);
-
         CompletionToken completion_token;
         std::chrono::nanoseconds dur;
         io_context::task_t* userdata = nullptr;
@@ -282,10 +267,6 @@ template <> struct async_operation<tags::io_uring_timeout> {
                 completion_token)),
             completion_token);
     }
-
-    constexpr void set_io_context(io_context* ctx, timeout_handler& h) {
-        h.ctx = ctx;
-    }
 };
 }  // namespace chx::net::detail
 
@@ -295,38 +276,27 @@ chx::net::async_timeout(io_context& ctx,
                         const std::chrono::duration<Rep, Period>& dur,
                         CompletionToken&& completion_token) {
     using aop = detail::async_operation<detail::tags::io_uring_timeout>;
-    if constexpr (aop::is_wrapper<std::decay_t<CompletionToken>>::value) {
-        detail::async_operation<detail::tags::io_uring_timeout>()
-            .set_io_context(&ctx, completion_token.handler);
-    }
     return aop()(&ctx,
                  detail::async_token_bind<const std::error_code&>(aop::to0(
                      std::forward<CompletionToken>(completion_token), dur)));
 }
 
 template <typename Rep, typename Period, typename CompletionToken>
-decltype(auto) chx::net::timeout_handler::async_update(
+decltype(auto) chx::net::timeout_cancellation::async_update(
     const std::chrono::duration<Rep, Period>& dur,
     CompletionToken&& completion_token) {
     using aop = detail::async_operation<detail::tags::io_uring_timeout>;
     return aop().upd(
-        ctx, detail::async_token_bind<const std::error_code&>(aop::upd0(
-                 std::forward<CompletionToken>(completion_token), dur, self)));
+        &self->get_associated_io_context(),
+        detail::async_token_bind<const std::error_code&>(aop::upd0(
+            std::forward<CompletionToken>(completion_token), dur, self)));
 }
 
 template <typename CompletionToken>
-decltype(auto)
-chx::net::timeout_handler::async_remove(CompletionToken&& completion_token) {
+decltype(auto) chx::net::timeout_cancellation::async_remove(
+    CompletionToken&& completion_token) {
     return detail::async_operation<detail::tags::io_uring_timeout>().del(
-        ctx, self,
+        &self->get_associated_io_context(), self,
         detail::async_token_bind<const std::error_code&>(
             std::forward<CompletionToken>(completion_token)));
-}
-
-template <typename CompletionToken>
-decltype(auto)
-chx::net::bind_timeout_handler(timeout_handler& h,
-                               CompletionToken&& completion_token) {
-    return detail::async_operation<detail::tags::io_uring_timeout>::wrapper(
-        std::forward<CompletionToken>(completion_token), h);
 }

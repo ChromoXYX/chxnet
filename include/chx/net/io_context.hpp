@@ -286,6 +286,14 @@ class io_context : CHXNET_NONCOPYABLE {
         }
     }
 
+    void submit() {
+        if (int r = io_uring_submit(&__M_ring); r >= 0) {
+            return;
+        } else {
+            __CHXNET_THROW_WITH(-r, bad_io_context_exec);
+        }
+    }
+
   public:
     io_context(std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(__task_t))
     /*: __M_static_task_sz(static_task_sz)*/ {
@@ -337,14 +345,6 @@ class io_context : CHXNET_NONCOPYABLE {
         }
     }
 
-    void submit() {
-        if (int r = io_uring_submit(&__M_ring); r >= 0) {
-            return;
-        } else {
-            __CHXNET_THROW_WITH(-r, bad_io_context_exec);
-        }
-    }
-
     /**
      * @brief Stop handling the completion of async tasks;
      *
@@ -376,6 +376,10 @@ class io_context : CHXNET_NONCOPYABLE {
      */
     template <typename CompletionToken>
     decltype(auto) async_nop(CompletionToken&& completion_token);
+
+    constexpr std::size_t outstanding_tasks() const noexcept(true) {
+        return __M_dyn_total;
+    }
 };
 }  // namespace chx::net
 

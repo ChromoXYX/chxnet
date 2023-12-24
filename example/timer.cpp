@@ -1,107 +1,144 @@
 #include "../include/chx/net.hpp"
 #include <iostream>
+#include <functional>
 
-chx::net::fixed_timer* global_timer;
-chx::net::fixed_timeout_timer* ftt;
+namespace net = chx::net;
 
-chx::net::task task() {
-    std::cout << "task1: start coroutine\n\tsleep for 3s via fixed_timer\n";
-    auto begin = std::chrono::system_clock::now();
-    co_await global_timer->async_register(std::chrono::seconds(3),
-                                          chx::net::use_coro);
-    std::cout << "task1: fixed_timer: hey you, you finally wake, after "
+static net::io_context ctx;
+static net::fixed_timer global_timer(ctx);
+static net::fixed_timeout_timer ftt(ctx), timer2(ctx);
+
+auto start = std::chrono::system_clock::now();
+
+auto current() { return std::chrono::system_clock::now(); }
+void print_current() {
+    std::cout << "["
               << std::chrono::duration_cast<std::chrono::milliseconds>(
-                     std::chrono::system_clock::now() - begin)
-                     .count()
-              << "ms\n";
+                     current() - start)
+              << "]";
 }
 
-chx::net::task task2() {
-    std::cout << "task2: start coroutine\n\tsleep for 1s via timeout\n";
-    chx::net::timeout_handler h;
-    auto awaitable = async_timeout(
-        co_await chx::net::this_context, std::chrono::seconds(1),
-        bind_timeout_handler(h, chx::net::as_tuple(chx::net::use_coro)));
-    std::cout << "task2: i think sleep 5s is better\n";
-    co_await h.async_update(std::chrono::seconds(5), chx::net::use_coro);
-    std::cout
-        << "task2: oops, 5s may be way too long, let's cancel the timeout!\n";
-    co_await h.async_remove(chx::net::use_coro);
-    std::cout << "task2: timeout result "
-              << std::get<0>(co_await awaitable).message() << "\n";
-}
-
-chx::net::task task3() {
-    std::cout << "task3: start fixed_timeout_timer\n";
-    std::cout << "task3: now sleep for 1s\n";
-    co_await ftt->async_register(std::chrono::seconds(1), chx::net::use_coro);
-    std::cout << "task3: now task3 sleep for 1.5s, but cancel it right after\n";
-    chx::net::cancellation_signal signal;
-    auto awaitable = ftt->async_register(
-        std::chrono::milliseconds(1500),
-        bind_cancellation_signal(signal,
-                                 chx::net::as_tuple(chx::net::use_coro)));
+net::task task1() {
+    print_current();
+    std::cout << "Task1 will test fixed_timer\n";
+    print_current();
+    std::cout << "Task1: i should sleep for 2s\n";
+    co_await global_timer.async_register(std::chrono::seconds(2),
+                                         net::use_coro);
+    print_current();
+    std::cout << "Task1: hey, you finally wake. now sleep for 5s, but "
+                 "meanwhile cancel "
+                 "the task\n";
+    net::cancellation_signal signal;
+    auto awaitable1 = global_timer.async_register(
+        std::chrono::seconds(5),
+        bind_cancellation_signal(signal, net::as_tuple(net::use_coro)));
     signal.emit();
-    std::cout << "task3: now what? "
-              << std::get<0>(co_await awaitable).message()
-              << "\ntask3: now task3 will sleep for 1s, but we cancel the "
-                 "timeout_timer\n";
-    auto awaitable2 =
-        ftt->async_register(std::chrono::seconds(5), chx::net::use_coro);
-    // pass a round, so that fixed_timeout_timer can update the handler
-    co_await (co_await chx::net::this_context).async_nop(chx::net::use_coro);
-    co_await ftt->get_timeout_handler().async_remove(chx::net::use_coro);
+    print_current();
+    std::cout << "Task1: now what? "
+              << std::get<0>(co_await awaitable1).message() << "\n";
+    print_current();
+    std::cout << "Task1: let's sleep for 2s, but change to 3s right after\n";
+    auto awaitable2 = global_timer.async_register(
+        std::chrono::seconds(2),
+        bind_cancellation_signal(signal, net::as_tuple(net::use_coro)));
+    auto* ptr = static_cast<net::fixed_timer_cancellation<net::fixed_timer>*>(
+        signal.get());
+    assert(ptr && ptr->valid());
+    ptr->update(std::chrono::seconds(3));
     co_await awaitable2;
-    std::cout << "task3: you should never see this!\n";
+    print_current();
+    std::cout << "Task1: success"
+              << "\n";
+}
+
+net::task task2() {
+    print_current();
+    std::cout << "Task2 will test fixed_timeout_timer\n";
+    print_current();
+    std::cout << "Task2: i want a 1.5s nap\n";
+    co_await ftt.async_register(std::chrono::milliseconds(1500), net::use_coro);
+    print_current();
+    std::cout << "Task2: then i wake. try working for 3s, but lose my "
+                 "attention after 1s\n";
+    net::cancellation_signal signal;
+    auto awaitable1 =
+        ftt.async_register(std::chrono::seconds(3),
+                           bind_cancellation_signal(signal, net::use_coro));
+    auto* ptr =
+        static_cast<net::fixed_timer_cancellation<net::fixed_timeout_timer>*>(
+            signal.get());
+    assert(ptr && ptr->valid());
+    ptr->update(std::chrono::seconds(1));
+    co_await awaitable1;
+    print_current();
+    std::cout
+        << "Task2: back to work! try to work for 5s, but give up after 2s\n";
+    auto awaitable2 = ftt.async_register(
+        std::chrono::seconds(5), chx::net::bind_cancellation_signal(
+                                     signal, net::as_tuple(net::use_coro)));
+    co_await ftt.async_register(std::chrono::seconds(2), net::use_coro);
+    signal.emit();
+    auto rtp = co_await awaitable2;
+    print_current();
+    std::cout << "Task2: now what? " << std::get<0>(rtp).message() << "\n";
+}
+
+net::task task3() {
+    print_current();
+    std::cout << "Task3 will test cancellation of timer\n";
+    print_current();
+    std::cout << "Task3: i will sleep for 2s\n";
+    co_await timer2.async_register(std::chrono::seconds(2), net::use_coro);
+    print_current();
+    std::cout
+        << "Task3: after, i will cancel timer2, but still try to wait for it\n";
+    co_await (co_await net::this_context).async_nop(net::use_coro);
+    co_await timer2.get_cancellation()->async_remove(net::use_coro);
+    auto awaitable =
+        timer2.async_register(std::chrono::seconds(2), net::use_coro);
+    co_await awaitable;
+}
+
+void watch_dog(const std::error_code& e, net::ktimer& ktimer) {
+    if (!e) {
+        ktimer.expired_after(std::chrono::milliseconds(200));
+        print_current();
+        std::cout << "Watch Dog: outstanding tasks: " << ctx.outstanding_tasks()
+                  << "\n";
+        ktimer.async_wait(
+            std::bind(watch_dog, std::placeholders::_1, std::ref(ktimer)));
+    }
 }
 
 int main() {
-    chx::net::io_context ctx;
-    chx::net::signal s(ctx);
-    s.add(SIGINT);
-    s.async_wait([&ctx](const std::error_code& e, int s) {
-        ctx.stop();
+    global_timer.set_interval(std::chrono::milliseconds(200));
+    ftt.set_interval(std::chrono::milliseconds(200));
+    timer2.set_interval(std::chrono::milliseconds(200));
+    global_timer.listen();
+    ftt.listen();
+    timer2.listen();
+
+    std::cout << "press Ctrl+C to exit.\n";
+    std::cout
+        << "after everything has settled down, number of outstanding "
+           "tasks should be 6.\n"
+        << "\t2 running timers = 2 tasks\n\t1 hanging coroutine = 2 "
+           "tasks\n\t1 watch dog timer = 1 task\n\t1 signal_set = 1 task\n\n";
+
+    co_spawn(ctx, task1(), net::detached);
+    co_spawn(ctx, task2(), net::detached);
+    co_spawn(ctx, task3(), net::detached);
+
+    net::ktimer ktimer(ctx);
+    watch_dog(std::error_code{}, ktimer);
+
+    net::signal signal_set(ctx);
+    signal_set.add(SIGINT);
+    signal_set.async_wait([&](const std::error_code& e, int) {
         std::cout << "exit...\n";
+        ctx.stop();
     });
-    std::cout << "press Ctrl+C to force exit\n";
-    chx::net::fixed_timer timer(ctx);
-    global_timer = &timer;
-    chx::net::fixed_timeout_timer fixed_timeout_timer(ctx);
-    fixed_timeout_timer.set_interval(std::chrono::milliseconds(500));
-    ftt = &fixed_timeout_timer;
-
-    timer.set_interval(std::chrono::milliseconds(200));
-    chx::net::cancellation_signal signal;
-    timer.async_register(
-        std::chrono::seconds(2),
-        timer.bind_cancellation_signal(signal, [](const std::error_code& e) {
-            std::cout << "main: 1 for 2s " << e.message() << "\n";
-        }));
-    timer.async_register(std::chrono::seconds(4),
-                         [&signal](const std::error_code& e) mutable {
-                             std::cout << "main: 2 for 4s " << e.message() << "\n";
-                             signal.emit();
-                         });
-    co_spawn(ctx, task(), chx::net::detached);
-    std::cout << "main: timer interval is " << timer.get_interval() << "\n";
-    timer.listen();
-
-    chx::net::timeout_handler h;
-    async_timeout(ctx, std::chrono::seconds(1),
-                  bind_timeout_handler(h, [](const std::error_code& e) {
-                      std::cout << "main: wake from timeout: " << e.message() << "\n";
-                  }));
-    h.async_update(std::chrono::seconds(5), [](const std::error_code& e) {
-        std::cout << "main: what now? " << e.message() << "\n";
-    });
-    h.async_remove([](const std::error_code& e) {
-        std::cout << "main: cancel timeout! " << e.message() << "\n";
-    });
-
-    fixed_timeout_timer.listen();
-
-    co_spawn(ctx, task2(), chx::net::detached);
-    co_spawn(ctx, task3(), chx::net::detached);
 
     ctx.run();
 }

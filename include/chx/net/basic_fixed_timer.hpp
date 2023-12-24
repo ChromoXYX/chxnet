@@ -14,8 +14,11 @@ struct fixed_timer {};
 struct fixed_timeout_timer {};
 }  // namespace detail::tags
 
+template <typename Timer> struct fixed_timer_cancellation;
+
 template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
     friend struct detail::async_operation<detail::tags::fixed_timer>;
+    friend struct fixed_timer_cancellation<basic_fixed_timer>;
 
     io_context* __M_ctx = nullptr;
     std::chrono::nanoseconds __M_interval;
@@ -68,28 +71,22 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
     template <typename Rep, typename Period, typename CompletionToken>
     decltype(auto) async_register(const std::chrono::duration<Rep, Period>& dur,
                                   CompletionToken&& completion_token);
-
-    template <typename CompletionToken>
-    decltype(auto) bind_cancellation_signal(cancellation_signal& signal,
-                                            CompletionToken&& completion_token);
 };
 using fixed_timer = basic_fixed_timer<ktimer>;
 
 class fixed_timeout_timer : CHXNET_NONCOPYABLE {
-    friend struct detail::async_operation<detail::tags::fixed_timeout_timer>;
+    friend struct detail::async_operation<detail::tags::fixed_timer>;
+    friend struct fixed_timer_cancellation<fixed_timeout_timer>;
     io_context* __M_ctx;
     std::multimap<std::chrono::time_point<std::chrono::system_clock>,
                   std::unique_ptr<io_context::task_t>>
         __M_set;
     std::chrono::nanoseconds __M_interval;
 
-    timeout_handler __M_handler;
+    cancellation_signal __M_signal;
 
   public:
-    fixed_timeout_timer(io_context& ctx) : __M_ctx(&ctx) {
-        detail::async_operation<detail::tags::io_uring_timeout>()
-            .set_io_context(__M_ctx, __M_handler);
-    }
+    fixed_timeout_timer(io_context& ctx) : __M_ctx(&ctx) {}
 
     constexpr io_context& get_associated_io_context() noexcept(true) {
         return *__M_ctx;
@@ -105,38 +102,14 @@ class fixed_timeout_timer : CHXNET_NONCOPYABLE {
             __M_interval);
     }
 
-    void listen() {
-        if (__M_interval.count() != 0)
-            async_timeout(
-                get_associated_io_context(), __M_interval,
-                bind_timeout_handler(
-                    get_timeout_handler(), [&](const std::error_code& e) {
-                        if (!e) {
-                            auto curr = std::chrono::system_clock::now();
-                            for (auto& [k, v] : __M_set) {
-                                if (k < curr) {
-                                    v->__M_option5 = true;
-                                    v->__M_token(v.get());
-                                } else {
-                                    break;
-                                }
-                            }
-                            __M_set.erase(__M_set.begin(),
-                                          __M_set.lower_bound(curr));
-                            listen();
-                        }
-                    }));
-    }
+    void listen();
 
     template <typename Rep, typename Period, typename CompletionToken>
     decltype(auto) async_register(const std::chrono::duration<Rep, Period>& dur,
                                   CompletionToken&& completion_token);
-    template <typename CompletionToken>
-    decltype(auto) bind_cancellation_signal(cancellation_signal& signal,
-                                            CompletionToken&& completion_token);
 
-    constexpr timeout_handler& get_timeout_handler() noexcept(true) {
-        return __M_handler;
+    timeout_cancellation* get_cancellation() noexcept(true) {
+        return static_cast<timeout_cancellation*>(__M_signal.get());
     }
 };
 }  // namespace chx::net

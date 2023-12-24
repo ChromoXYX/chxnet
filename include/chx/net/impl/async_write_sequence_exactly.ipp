@@ -79,7 +79,7 @@ template <typename Stream, typename Sequence, typename CompletionToken>
 decltype(auto)
 chx::net::async_write_sequence_exactly(Stream&& stream, Sequence&& sequence,
                                        CompletionToken&& completion_token) {
-    if constexpr (!check_attr<std::decay_t<Stream>, detail::no_short_write>()) {
+    if constexpr (!check_attr<detail::no_short_write, std::decay_t<Stream>>()) {
         using operation_type =
             decltype(detail::async_operation<detail::tags::write_seq_exactly>::
                          exactly_seq_managed(std::forward<Stream>(stream),

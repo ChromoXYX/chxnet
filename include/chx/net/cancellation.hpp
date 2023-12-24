@@ -46,6 +46,7 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
     }
 
     void clear() noexcept(true) { __M_op.reset(); }
+    detail::cancellation_base* get() noexcept(true) { return __M_op.get(); }
 
   private:
     void assign(io_context::task_t* task) noexcept(true) {
@@ -80,6 +81,8 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
 };
 
 namespace detail {
+struct cancellation_attr {};
+
 struct cancellation_assign {
     void operator()(io_context::task_t* t,
                     cancellation_signal& s) noexcept(true) {
@@ -92,7 +95,7 @@ struct cancellation_assign {
 };
 
 template <typename BindCompletionToken> struct cancellation_ops {
-    using attribute_type = attribute<async_token>;
+    using attribute_type = attribute<async_token, cancellation_attr>;
 
     BindCompletionToken bind_completion_token;
     cancellation_signal& signal;
@@ -118,7 +121,7 @@ cancellation_ops(cancellation_signal&, BindCompletionToken&&)
     -> cancellation_ops<std::remove_reference_t<BindCompletionToken>>;
 
 template <typename NoRefCompletionToken> struct cancellation_inter {
-    using attribute_type = attribute<async_token>;
+    using attribute_type = attribute<async_token, cancellation_attr>;
 
     NoRefCompletionToken noref_completion_token;
     cancellation_signal& signal;
