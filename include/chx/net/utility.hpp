@@ -39,7 +39,7 @@ class mapped_file : CHXNET_NONCOPYABLE {
     constexpr unsigned char* data() const noexcept(true) {
         return static_cast<unsigned char*>(__M_ptr);
     }
-    constexpr std::size_t size() noexcept(true) { return __M_sz; }
+    constexpr std::size_t size() const noexcept(true) { return __M_sz; }
 
     void map(const file_descriptor& fd, std::size_t file_size, int prot,
              int flags, std::size_t offset, std::error_code& e) noexcept(true) {
