@@ -419,7 +419,11 @@ template <typename T> struct awaitable_impl : CHXNET_NONCOPYABLE {
     }
     cancellation_signal get_cancellation_signal() {
         cancellation_signal s;
-        detail::cancellation_assign()(get_associated_task(), s);
+        if (get_associated_task()->__M_custom_cancellation) {
+            (*get_associated_task()->__M_custom_cancellation)(s);
+        } else {
+            detail::cancellation_assign()(get_associated_task(), s);
+        }
         return std::move(s);
     }
 
