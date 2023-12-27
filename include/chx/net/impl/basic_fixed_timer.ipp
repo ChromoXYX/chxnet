@@ -73,7 +73,11 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
 
         template <typename Rep, typename Period>
         void update(const std::chrono::duration<Rep, Period>& dur) {
-            update(std::chrono::system_clock::now() + dur);
+            if (dur.count() != 0) {
+                update(std::chrono::system_clock::now() + dur);
+            } else {
+                update({});
+            }
         }
     };
 

@@ -68,14 +68,14 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
             __M_trash.clear();
             if (!e) {
                 auto curr = std::chrono::system_clock::now();
-                auto lower = __M_set.lower_bound(detail::__zero_time_point);
+                auto lower = __M_set.upper_bound(detail::__zero_time_point);
                 for (auto ite = lower;
                      ite != __M_set.end() && ite->first < curr; ++ite) {
                     ite->second->__M_ec.clear();
                     ite->second->__M_token(ite->second.get());
                 }
-                lower = __M_set.lower_bound(detail::__zero_time_point);
-                if (lower != __M_set.end()) {
+                lower = __M_set.upper_bound(detail::__zero_time_point);
+                if (lower != __M_set.end() && lower->first <= curr) {
                     __M_set.erase(lower, __M_set.lower_bound(curr));
                 }
                 listen();
@@ -139,14 +139,14 @@ class fixed_timeout_timer : CHXNET_NONCOPYABLE {
                 __M_trash.clear();
                 if (!e) {
                     auto curr = std::chrono::system_clock::now();
-                    auto lower = __M_set.lower_bound(detail::__zero_time_point);
+                    auto lower = __M_set.upper_bound(detail::__zero_time_point);
                     for (auto ite = lower;
                          ite != __M_set.end() && ite->first < curr; ++ite) {
                         ite->second->__M_ec.clear();
                         ite->second->__M_token(ite->second.get());
                     }
-                    lower = __M_set.lower_bound(detail::__zero_time_point);
-                    if (lower != __M_set.end()) {
+                    lower = __M_set.upper_bound(detail::__zero_time_point);
+                    if (lower != __M_set.end() && lower->first <= curr) {
                         __M_set.erase(lower, __M_set.lower_bound(curr));
                     }
                     listen();
