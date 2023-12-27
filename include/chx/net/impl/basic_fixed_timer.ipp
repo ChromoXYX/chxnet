@@ -35,13 +35,16 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
         constexpr bool valid() noexcept(true) { return controller_ != nullptr; }
 
         void operator()() override {
-            if (valid())
+            if (valid()) {
                 if (auto ite = find_position(); ite != timer()->__M_set.end()) {
                     assign_ec(task()->__M_ec, errc::operation_canceled);
-                    task()->__M_token(task());
-                    timer()->__M_set.erase(ite);
+                    // task()->__M_token(task());
+                    // timer()->__M_set.erase(ite);
+                    timer()->__M_trash.emplace_back(
+                        std::move(timer()->__M_set.extract(ite).mapped()));
                     release();
                 }
+            }
         }
 
         auto find_position() noexcept(true) {

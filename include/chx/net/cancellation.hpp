@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./async_token.hpp"
+#include "./async_combine.hpp"
 
 namespace chx::net::detail::tags {
 struct outer_cancel {};
@@ -143,6 +144,38 @@ template <typename NoRefCompletionToken> struct cancellation_inter {
 template <typename RefCompletionToken>
 cancellation_inter(cancellation_signal&, RefCompletionToken&&)
     -> cancellation_inter<std::remove_reference_t<RefCompletionToken>>;
+
+namespace tags {
+struct async_combine_cancel_and_submit {};
+}  // namespace tags
+
+template <> struct async_operation<tags::async_combine_cancel_and_submit> {
+    void cancel(io_context* ctx, io_context::task_t* task) const {
+        if (!task->__M_custom_cancellation) {
+            if (task->__M_cancel_invoke) {
+                task->__M_token(task);
+            } else {
+                ctx->cancel_task(task);
+            }
+        } else {
+            cancellation_signal __signal;
+            (*task->__M_custom_cancellation)(__signal);
+            __signal.emit();
+        }
+    }
+    void submit(io_context* ctx) const { ctx->submit(); }
+};
+
+template <typename Operation, typename CompletionToken,
+          typename EnableReferenceCount>
+int async_combine_impl<Operation, CompletionToken,
+                       EnableReferenceCount>::operator()(io_context::task_t*) {
+    for (auto* task : __M_subtasks) {
+        detail::async_operation<detail::tags::async_combine_cancel_and_submit>()
+            .cancel(&get_associated_io_context(), task);
+    }
+    return 0;
+}
 }  // namespace detail
 
 template <typename CompletionToken>

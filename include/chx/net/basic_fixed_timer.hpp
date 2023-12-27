@@ -21,20 +21,28 @@ constexpr std::chrono::time_point<std::chrono::system_clock> __zero_time_point;
 template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
     template <typename T> friend struct detail::async_operation;
 
+    std::multimap<std::chrono::time_point<std::chrono::system_clock>,
+                  std::unique_ptr<io_context::task_t>>
+        __M_set;
+    std::vector<std::unique_ptr<io_context::task_t>> __M_trash;
+
     io_context* __M_ctx = nullptr;
     std::chrono::nanoseconds __M_interval;
     std::multimap<io_context::task_t*, detail::cancellation_base*> __M_tracker;
     Timer __M_timer;
+    bool __M_clearing = false;
 
-    std::multimap<std::chrono::time_point<std::chrono::system_clock>,
-                  std::unique_ptr<io_context::task_t>>
-        __M_set;
+    void __predestruct() noexcept(true) {
+        __M_set.clear();
+        __M_trash.clear();
+    }
 
   public:
     basic_fixed_timer(io_context& ctx) : __M_ctx(&ctx), __M_timer(ctx) {}
     basic_fixed_timer(Timer&& timer)
         : __M_ctx(&timer.get_associated_io_context()),
           __M_timer(std::move(timer)) {}
+    ~basic_fixed_timer() { __predestruct(); }
 
     constexpr io_context& get_associated_io_context() noexcept(true) {
         return *__M_ctx;
@@ -54,6 +62,10 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
     void listen() {
         __M_timer.expired_after(__M_interval);
         __M_timer.async_wait([this](const std::error_code& e) {
+            for (auto& ptr : __M_trash) {
+                ptr->__M_token(ptr.get());
+            }
+            __M_trash.clear();
             if (!e) {
                 auto curr = std::chrono::system_clock::now();
                 auto lower = __M_set.lower_bound(detail::__zero_time_point);
@@ -74,22 +86,34 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
     template <typename Rep, typename Period, typename CompletionToken>
     decltype(auto) async_register(const std::chrono::duration<Rep, Period>& dur,
                                   CompletionToken&& completion_token);
+
+    void async_clear() {
+        get_associated_io_context().async_nop(
+            [this](const std::error_code& e) mutable { __M_trash.clear(); });
+    }
 };
 using fixed_timer = basic_fixed_timer<ktimer>;
 
 class fixed_timeout_timer : CHXNET_NONCOPYABLE {
     template <typename T> friend struct detail::async_operation;
-    io_context* __M_ctx;
     std::multimap<std::chrono::time_point<std::chrono::system_clock>,
                   std::unique_ptr<io_context::task_t>>
         __M_set;
+    std::vector<std::unique_ptr<io_context::task_t>> __M_trash;
+    io_context* __M_ctx;
     std::multimap<io_context::task_t*, detail::cancellation_base*> __M_tracker;
     std::chrono::nanoseconds __M_interval;
 
     cancellation_signal __M_signal;
 
+    void __predestruct() noexcept(true) {
+        __M_set.clear();
+        __M_trash.clear();
+    }
+
   public:
     fixed_timeout_timer(io_context& ctx) : __M_ctx(&ctx) {}
+    ~fixed_timeout_timer() { __predestruct(); }
 
     constexpr io_context& get_associated_io_context() noexcept(true) {
         return *__M_ctx;
@@ -109,6 +133,10 @@ class fixed_timeout_timer : CHXNET_NONCOPYABLE {
         async_timeout(
             get_associated_io_context(), __M_interval,
             bind_cancellation_signal(__M_signal, [&](const std::error_code& e) {
+                for (auto& ptr : __M_trash) {
+                    ptr->__M_token(ptr.get());
+                }
+                __M_trash.clear();
                 if (!e) {
                     auto curr = std::chrono::system_clock::now();
                     auto lower = __M_set.lower_bound(detail::__zero_time_point);
@@ -129,6 +157,11 @@ class fixed_timeout_timer : CHXNET_NONCOPYABLE {
     template <typename Rep, typename Period, typename CompletionToken>
     decltype(auto) async_register(const std::chrono::duration<Rep, Period>& dur,
                                   CompletionToken&& completion_token);
+
+    void async_clear() {
+        get_associated_io_context().async_nop(
+            [this](const std::error_code& e) mutable { __M_trash.clear(); });
+    }
 
     timeout_cancellation* get_cancellation() noexcept(true) {
         return static_cast<timeout_cancellation*>(__M_signal.get());

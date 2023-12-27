@@ -12,24 +12,12 @@ namespace chx::net {
 namespace detail {
 namespace tags {
 struct async_combine_persist {};
-struct async_combine_cancel_and_submit {};
 struct async_combine_use_delivery {};
 }  // namespace tags
 template <> struct async_operation<tags::async_combine_persist> {
     void operator()(io_context::task_t* task) noexcept(true) {
         task->get_associated_io_context().release(task);
     }
-};
-
-template <> struct async_operation<tags::async_combine_cancel_and_submit> {
-    void cancel(io_context* ctx, io_context::task_t* task) const {
-        if (!task->__M_cancel_invoke) {
-            ctx->cancel_task(task);
-        } else {
-            task->__M_token(task);
-        }
-    }
-    void submit(io_context* ctx) { ctx->submit(); }
 };
 
 template <> struct async_operation<tags::async_combine_use_delivery> {
@@ -103,15 +91,7 @@ struct async_combine_impl
         }
     }
 
-    int operator()(io_context::task_t*) {
-        for (auto t : __M_subtasks) {
-            async_operation<tags::async_combine_cancel_and_submit>().cancel(
-                &get_associated_io_context(), t);
-        }
-        async_operation<tags::async_combine_cancel_and_submit>().submit(
-            &get_associated_io_context());
-        return 0;
-    }
+    int operator()(io_context::task_t*);
 
     constexpr io_context& get_associated_io_context() noexcept(true) {
         return get_associated_task()->get_associated_io_context();
@@ -405,3 +385,5 @@ decltype(auto) async_combine_reference_count(
         opt, std::forward<OpArgs>(args)...);
 }
 }  // namespace chx::net
+
+#include "./cancellation.hpp"
