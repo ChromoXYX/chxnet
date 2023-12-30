@@ -39,11 +39,6 @@ template <typename Tag> struct async_operation;
 namespace tags {
 struct use_delivery {};
 }  // namespace tags
-
-struct custom_cancellation_base {
-    virtual void operator()(cancellation_signal&) = 0;
-    virtual ~custom_cancellation_base() = default;
-};
 }  // namespace detail
 
 class io_context : CHXNET_NONCOPYABLE {
@@ -55,6 +50,12 @@ class io_context : CHXNET_NONCOPYABLE {
     // bool __M_destructing = false;
 
     struct __task_t : CHXNET_NONCOPYABLE {
+        struct custom_cancellation_base {
+            virtual void operator()(cancellation_signal&) = 0;
+            virtual void cancel(io_context::__task_t*) = 0;
+            virtual ~custom_cancellation_base() = default;
+        };
+
         __task_t(io_context* p) noexcept(true) : __M_ctx(p) {}
 
         io_context* __M_ctx = nullptr;
@@ -74,8 +75,7 @@ class io_context : CHXNET_NONCOPYABLE {
         std::error_code __M_ec;
         int __M_res;
 
-        std::unique_ptr<detail::custom_cancellation_base>
-            __M_custom_cancellation;
+        std::unique_ptr<custom_cancellation_base> __M_custom_cancellation;
 
         detail::basic_token_storage<int(__task_t*), CHXNET_TOKEN_STORAGE_SIZE>
             __M_token;

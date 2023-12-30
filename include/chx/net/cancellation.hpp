@@ -158,9 +158,7 @@ template <> struct async_operation<tags::async_combine_cancel_and_submit> {
                 ctx->cancel_task(task);
             }
         } else {
-            cancellation_signal __signal;
-            (*task->__M_custom_cancellation)(__signal);
-            __signal.emit();
+            task->__M_custom_cancellation->cancel(task);
         }
     }
     void submit(io_context* ctx) const { ctx->submit(); }
