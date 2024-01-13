@@ -123,7 +123,7 @@ template <typename Protocol> class basic_socket {
               typename = std::enable_if_t<sizeof(CharT) == 1>>
     void set_option(int level, int name, const CharT (&p)[N]) {
         std::error_code ec;
-        set_option(level, name, std::forward<const CharT(&)[N]>(p));
+        set_option(level, name, std::forward<const CharT(&)[N]>(p), ec);
         if (ec) {
             __CHXNET_THROW_EC(ec);
         }
