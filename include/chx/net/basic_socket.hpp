@@ -108,6 +108,27 @@ template <typename Protocol> class basic_socket {
         }
     }
 
+    template <typename CharT, std::size_t N,
+              typename = std::enable_if_t<sizeof(CharT) == 1>>
+    void set_option(int level, int name, const CharT (&p)[N],
+                    std::error_code& e) noexcept(true) {
+        if (::setsockopt(__M_fd, level, name, p, N) == 0) {
+            e.clear();
+        } else {
+            net::detail::assign_ec(e, errno);
+        }
+    }
+
+    template <typename CharT, std::size_t N,
+              typename = std::enable_if_t<sizeof(CharT) == 1>>
+    void set_option(int level, int name, const CharT (&p)[N]) {
+        std::error_code ec;
+        set_option(level, name, std::forward<const CharT(&)[N]>(p));
+        if (ec) {
+            __CHXNET_THROW_EC(ec);
+        }
+    }
+
     void close() {
         std::error_code ec;
         close(ec);
