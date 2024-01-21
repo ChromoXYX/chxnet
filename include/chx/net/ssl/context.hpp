@@ -6,6 +6,7 @@
 #include "../detail/basic_token_storage.hpp"
 
 #include <cassert>
+#include <functional>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
@@ -25,15 +26,48 @@ inline std::string last_error() {
 
 class context : CHXNET_NONCOPYABLE {
     SSL_CTX* __M_ssl_ctx = nullptr;
-    net::detail::basic_token_storage<std::string(std::size_t, int)>
-        __M_passwd_fn;
+    std::function<std::string(std::size_t, int)> __M_passwd_fn;
+    std::function<std::string_view(const std::vector<std::string_view>&)>
+        __M_alpn_select_fn;
 
     static int __passwd_cb(char* c, int sz, int p, void* u) {
         auto* self = static_cast<context*>(u);
+        assert(self->__M_passwd_fn);
         auto pw = self->__M_passwd_fn(static_cast<std::size_t>(sz), p);
         assert(pw.size() <= sz);
         strncpy(c, pw.c_str(), pw.size());
         return pw.size();
+    }
+
+    static int __alpn_select_cb(SSL*, const unsigned char** out,
+                                unsigned char* outlen, const unsigned char* in,
+                                unsigned int inlen, void* arg) {
+        auto* self = static_cast<context*>(arg);
+        // parse proto list
+        unsigned int i = 0;
+        std::vector<std::string_view> d;
+        const char* s = reinterpret_cast<const char*>(in);
+        while (i < inlen) {
+            unsigned int _proto_len = in[i];
+            assert(i + _proto_len < inlen);
+            std::string_view _proto_sv{s + i, _proto_len + 1};
+            if (std::any_of(_proto_sv.begin(), _proto_sv.end(),
+                            [](char c) { return c == 0; })) {
+                return SSL_TLSEXT_ERR_ALERT_FATAL;
+            }
+            d.emplace_back(_proto_sv);
+            i += 1 + _proto_len;
+        }
+        assert(i == inlen);
+        std::string_view _selected = self->__M_alpn_select_fn(d);
+        if (!_selected.empty()) {
+            *outlen = _selected[0];
+            *out =
+                reinterpret_cast<const unsigned char*>(_selected.begin() + 1);
+            return SSL_TLSEXT_ERR_OK;
+        } else {
+            return SSL_TLSEXT_ERR_NOACK;
+        }
     }
 
   public:
@@ -116,8 +150,15 @@ class context : CHXNET_NONCOPYABLE {
     }
     template <typename PasswordFn>
     void set_default_passwd_cb(PasswordFn&& password_fn) {
+        __M_passwd_fn = std::forward<PasswordFn>(password_fn);
         SSL_CTX_set_default_passwd_cb_userdata(native_handler(), this);
         SSL_CTX_set_default_passwd_cb(native_handler(), __passwd_cb);
+    }
+
+    template <typename AlpnSelectFn>
+    void set_alpn_select_cb(AlpnSelectFn&& alpn_select_fn) {
+        __M_alpn_select_fn = std::forward<AlpnSelectFn>(alpn_select_fn);
+        SSL_CTX_set_alpn_select_cb(native_handler(), __alpn_select_cb, this);
     }
 
     std::uint64_t set_options(int option) noexcept(true) {
