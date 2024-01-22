@@ -108,7 +108,7 @@ class io_context : CHXNET_NONCOPYABLE {
     // // alignas(64) std::atomic_flag __M_mt_flag = ATOMIC_FLAG_INIT;
     // alignas(64) std::atomic_bool __M_mt_flag2 = false;
     // alignas(64) std::mutex __M_mt_mutex;
-    bool __M_destruct = false;
+    // bool __M_destruct = false;
 
     static_assert(
         std::is_nothrow_destructible_v<__task_t> &&
@@ -330,16 +330,16 @@ class io_context : CHXNET_NONCOPYABLE {
      */
     ~io_context() {
         // __M_mt_destruct.store(true);
-        __M_destruct = true;
-        try {
-            while (!is_stopped() && (!__M_dynamic_task_queue.empty())) {
-                __async_cancel_all();
-                __run();
-            }
-        } catch (...) {
-            io_uring_queue_exit(&__M_ring);
-            std::rethrow_exception(std::current_exception());
-        }
+        // __M_destruct = true;
+        // try {
+        //     while (!is_stopped() && (!__M_dynamic_task_queue.empty())) {
+        //         __async_cancel_all();
+        //         __run();
+        //     }
+        // } catch (...) {
+        //     io_uring_queue_exit(&__M_ring);
+        //     std::rethrow_exception(std::current_exception());
+        // }
         io_uring_queue_exit(&__M_ring);
     }
     /**
