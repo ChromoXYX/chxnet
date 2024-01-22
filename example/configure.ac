@@ -1,8 +1,9 @@
 AC_INIT([0.0], [chxnet examples])
 AM_INIT_AUTOMAKE([-Werror -Wall foreign])
+: ${CXXFLAGS=""}
 
 AC_SUBST(__CHXNET_EXEC_LDADD, ["-lssl -lcrypto"])
-AC_SUBST(__CHXNET_EXEC_CXXFLAGS)
+AC_SUBST(__CHXNET_EXEC_CXXFLAGS, ["-O0 -g -std=c++20"])
 
 AC_SUBST(__CHXNET_KERNEL_VERSION, [$(echo `uname -r` | cut -d "." -f 1,2)])
 AC_SUBST(__CHXNET_KERNEL_VERSION_MAJOR, [$(echo $__CHXNET_KERNEL_VERSION | cut -d "." -f 1)])
@@ -86,10 +87,7 @@ AC_ARG_WITH([llhttp],
 ])
 AM_CONDITIONAL([CHXNET_WITH_LLHTTP], [test "x$__CHXNET_WITH_LLHTTP" == x1])
 
-: ${CXXFLAGS="-O0 -g"}
 AC_PROG_CXX
-dnl AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
-AC_SUBST(CXXFLAGS, ["$CXXFLAGS -std=c++20"])
 AC_CONFIG_FILES([
     Makefile
 ])
