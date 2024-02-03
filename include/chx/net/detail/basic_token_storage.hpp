@@ -7,6 +7,15 @@
 #include "../error_code.hpp"
 #include "../exception.hpp"
 #include "./noncopyable.hpp"
+#include "./mm.hpp"
+
+#ifndef CHXNET_TOKEN_STORAGE_SHRINK_FACTOR
+#define CHXNET_TOKEN_STORAGE_SHRINK_FACTOR 2
+#endif
+
+#ifndef CHXNET_TOKEN_STORAGE_ALLOCATOR
+#define CHXNET_TOKEN_STORAGE_ALLOCATOR ::chx::net::detail::dynamic_allocator
+#endif
 
 namespace chx::net {
 class bad_token_storage_call : public exception {
@@ -33,9 +42,28 @@ template <typename Ret, typename... Args> struct func_traits<Ret(Args...)> {
     using args_type = std::tuple<Args...>;
 };
 
+struct default_allocator {
+    void* allocate(std::size_t n) const {
+        if (void* p = ::malloc(n); p) {
+            return p;
+        } else {
+            __CHXNET_THROW(errc::not_enough_memory);
+        }
+    }
+    void deallocate(void* ptr) const noexcept(true) { ::free(ptr); }
+};
+
+struct dynamic_allocator {
+    void* allocate(std::size_t n) const { return thread_mm.allocate(n); }
+    void deallocate(void* ptr) const noexcept(true) {
+        return thread_mm.deallocate(ptr);
+    }
+};
+
 template <typename Signature, std::size_t BufferSize = 48,
-          std::size_t Align = alignof(std::max_align_t)>
-class basic_token_storage : CHXNET_NONCOPYABLE {
+          std::size_t Align = alignof(std::max_align_t),
+          typename Allocator = CHXNET_TOKEN_STORAGE_ALLOCATOR>
+class basic_token_storage : CHXNET_NONCOPYABLE, Allocator {
   public:
     using signature_type = Signature;
 
@@ -89,18 +117,14 @@ class basic_token_storage : CHXNET_NONCOPYABLE {
         return static_cast<void*>(__M_ptr) == __M_internal_buf;
     }
 
-    void __destroy() noexcept(true) {
-        if (valid()) {
-            std::destroy_at(std::exchange(__M_ptr, nullptr));
-        }
-    }
     void __destroy_and_release() noexcept(true) {
         if (valid()) {
             if (__ptr_in_buf()) {
                 std::destroy_at(std::exchange(__M_ptr, nullptr));
             } else {
                 std::destroy_at(__M_ptr);
-                ::free(std::exchange(__M_ptr, nullptr));
+                Allocator::deallocate(std::exchange(__M_ptr, nullptr));
+                // ::free(std::exchange(__M_ptr, nullptr));
             }
         }
     }
@@ -119,7 +143,8 @@ class basic_token_storage : CHXNET_NONCOPYABLE {
             __M_ptr = new (__M_internal_buf)
                 __w(std::forward<CallableObj>(callable_obj));
         } else {
-            __M_ptr = new (::malloc(sizeof(__w)))
+            __M_ptr = new (Allocator::allocate(sizeof(__w)))
+                // (::malloc(sizeof(__w)))
                 __w(std::forward<CallableObj>(callable_obj));
             __M_last_sz = sizeof(__w);
         }
@@ -149,15 +174,20 @@ class basic_token_storage : CHXNET_NONCOPYABLE {
         } else {
             if (valid()) {
                 if (__ptr_in_buf() || __M_last_sz < sizeof(__w) ||
-                    sizeof(__w) < __M_last_sz / 2) {
+                    sizeof(__w) <
+                        __M_last_sz / CHXNET_TOKEN_STORAGE_SHRINK_FACTOR) {
                     __destroy_and_release();
-                    __M_ptr = static_cast<__base*>(::malloc(sizeof(__w)));
+                    __M_ptr = static_cast<__base*>(
+                        // ::malloc(sizeof(__w))
+                        Allocator::allocate(sizeof(__w)));
                     __M_last_sz = sizeof(__w);
                 } else {
                     std::destroy_at(__M_ptr);
                 }
             } else {
-                __M_ptr = static_cast<__base*>(::malloc(sizeof(__w)));
+                __M_ptr = static_cast<__base*>(
+                    // ::malloc(sizeof(__w))
+                    Allocator::allocate(sizeof(__w)));
                 __M_last_sz = sizeof(__w);
             }
             ::new (__M_ptr) __w(std::forward<CallableObj>(callable_obj));
@@ -185,15 +215,20 @@ class basic_token_storage : CHXNET_NONCOPYABLE {
         } else {
             if (valid()) {
                 if (__ptr_in_buf() || __M_last_sz < sizeof(__w) ||
-                    sizeof(__w) < __M_last_sz / 2) {
+                    sizeof(__w) <
+                        __M_last_sz / CHXNET_TOKEN_STORAGE_SHRINK_FACTOR) {
                     __destroy_and_release();
-                    __M_ptr = static_cast<__base*>(::malloc(sizeof(__w)));
+                    __M_ptr = static_cast<__base*>(
+                        // ::malloc(sizeof(__w))
+                        Allocator::allocate(sizeof(__w)));
                     __M_last_sz = sizeof(__w);
                 } else {
                     std::destroy_at(__M_ptr);
                 }
             } else {
-                __M_ptr = static_cast<__base*>(::malloc(sizeof(__w)));
+                __M_ptr = static_cast<__base*>(
+                    // ::malloc(sizeof(__w))
+                    Allocator::allocate(sizeof(__w)));
                 __M_last_sz = sizeof(__w);
             }
             ::new (__M_ptr) __w(std::forward<Args>(args)...);

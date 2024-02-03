@@ -3,6 +3,8 @@
 #include "./io_context.hpp"
 #include "./attribute.hpp"
 
+#include <cassert>
+
 namespace chx::net {
 /**
  * @brief Base type of AsyncToken.

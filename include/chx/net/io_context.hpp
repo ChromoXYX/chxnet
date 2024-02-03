@@ -2,11 +2,8 @@
 
 #include <liburing.h>
 
-#include <cassert>
 #include <memory>
 #include <vector>
-#include <atomic>
-#include <queue>
 
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
@@ -81,7 +78,7 @@ class io_context : CHXNET_NONCOPYABLE {
             __M_token;
 
         void reset() noexcept(true) {
-            __M_token.clear();
+            // __M_token.clear();
             __M_ec.clear();
             __M_res = 0;
             __M_persist = false;
@@ -125,7 +122,9 @@ class io_context : CHXNET_NONCOPYABLE {
     __task_t* acquire() {
         if (__M_dyn_total < __M_dynamic_task_queue.size()) {
             for (std::size_t idx = 0; idx < __M_dyn_end + 1; ++idx) {
-                if (__M_dynamic_task_queue[idx]->__M_avail) {
+                if (!__M_dynamic_task_queue[idx]->__M_avail) {
+                    continue;
+                } else {
                     auto* p = __M_dynamic_task_queue[idx].get();
                     ++__M_dyn_total;
                     p->__M_avail = false;

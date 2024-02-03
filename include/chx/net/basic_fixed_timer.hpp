@@ -4,6 +4,7 @@
 #include "./ktimer.hpp"
 #include "./cancellation.hpp"
 #include "./timeout.hpp"
+#include "./detail/flat_multimap.hpp"
 
 #include <chrono>
 #include <map>
@@ -21,14 +22,15 @@ constexpr std::chrono::time_point<std::chrono::system_clock> __zero_time_point;
 template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
     template <typename T> friend struct detail::async_operation;
 
-    std::multimap<std::chrono::time_point<std::chrono::system_clock>,
-                  std::unique_ptr<io_context::task_t>>
+    detail::flat_multimap<std::chrono::time_point<std::chrono::system_clock>,
+                          std::unique_ptr<io_context::task_t>>
         __M_set;
     std::vector<std::unique_ptr<io_context::task_t>> __M_trash;
 
     io_context* __M_ctx = nullptr;
     std::chrono::nanoseconds __M_interval;
-    std::multimap<io_context::task_t*, detail::cancellation_base*> __M_tracker;
+    detail::flat_multimap<io_context::task_t*, detail::cancellation_base*>
+        __M_tracker;
     Timer __M_timer;
     bool __M_clearing = false;
 
@@ -68,16 +70,11 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
             __M_trash.clear();
             if (!e) {
                 auto curr = std::chrono::system_clock::now();
-                auto lower = __M_set.upper_bound(detail::__zero_time_point);
-                for (auto ite = lower;
-                     ite != __M_set.end() && ite->first < curr; ++ite) {
-                    ite->second->__M_ec.clear();
-                    ite->second->__M_token(ite->second.get());
-                }
-                lower = __M_set.upper_bound(detail::__zero_time_point);
-                if (lower != __M_set.end() && lower->first <= curr) {
-                    __M_set.erase(lower, __M_set.lower_bound(curr));
-                }
+                __M_set.consume_range(detail::__zero_time_point, curr,
+                                      [](auto& v) {
+                                          v.second->__M_ec.clear();
+                                          v.second->__M_token(v.second.get());
+                                      });
                 listen();
             }
         });
@@ -96,12 +93,13 @@ using fixed_timer = basic_fixed_timer<ktimer>;
 
 class fixed_timeout_timer : CHXNET_NONCOPYABLE {
     template <typename T> friend struct detail::async_operation;
-    std::multimap<std::chrono::time_point<std::chrono::system_clock>,
-                  std::unique_ptr<io_context::task_t>>
+    detail::flat_multimap<std::chrono::time_point<std::chrono::system_clock>,
+                          std::unique_ptr<io_context::task_t>>
         __M_set;
     std::vector<std::unique_ptr<io_context::task_t>> __M_trash;
     io_context* __M_ctx;
-    std::multimap<io_context::task_t*, detail::cancellation_base*> __M_tracker;
+    detail::flat_multimap<io_context::task_t*, detail::cancellation_base*>
+        __M_tracker;
     std::chrono::nanoseconds __M_interval;
 
     cancellation_signal __M_signal;
@@ -139,16 +137,11 @@ class fixed_timeout_timer : CHXNET_NONCOPYABLE {
                 __M_trash.clear();
                 if (!e) {
                     auto curr = std::chrono::system_clock::now();
-                    auto lower = __M_set.upper_bound(detail::__zero_time_point);
-                    for (auto ite = lower;
-                         ite != __M_set.end() && ite->first < curr; ++ite) {
-                        ite->second->__M_ec.clear();
-                        ite->second->__M_token(ite->second.get());
-                    }
-                    lower = __M_set.upper_bound(detail::__zero_time_point);
-                    if (lower != __M_set.end() && lower->first <= curr) {
-                        __M_set.erase(lower, __M_set.lower_bound(curr));
-                    }
+                    __M_set.consume_range(
+                        detail::__zero_time_point, curr, [](auto& v) {
+                            v.second->__M_ec.clear();
+                            v.second->__M_token(v.second.get());
+                        });
                     listen();
                 }
             }));

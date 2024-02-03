@@ -39,6 +39,8 @@ chx/net/detail/task_aware.hpp \
 chx/net/detail/type_identity.hpp \
 chx/net/detail/anchor.hpp \
 chx/net/detail/sfinae_placeholder.hpp \
+chx/net/detail/flat_multimap.hpp \
+chx/net/detail/mm.hpp \
 chx/net/impl/general_async_close.hpp \
 chx/net/impl/general_ip_socket_io.hpp \
 chx/net/impl/io_context.ipp \
