@@ -19,8 +19,9 @@ struct mm {
             constexpr void* entry() noexcept(true) { return &buffer; }
         };
 
-        constexpr blocks(std::size_t n, mm* p) noexcept(true)
-            : blsz(n), pm(p) {}
+        blocks(std::size_t n, mm* p) : blsz(n), pm(p) {
+            pm->clu.emplace(n, this);
+        }
         ~blocks() noexcept(true) {
             while (bls) {
                 ::free(std::exchange(bls, bls->next));
@@ -30,7 +31,7 @@ struct mm {
         block* bls = nullptr;
         const std::size_t blsz;
         std::size_t blc = 0;
-        const mm* pm;
+        mm* const pm;
 
         void* acquire() {
             if (bls) {
@@ -61,27 +62,31 @@ struct mm {
         std::size_t mm_threshold = 0;
         std::size_t max_bls_size_in_bytes = 0;
     } opt = {};
-    std::unordered_map<std::size_t, std::unique_ptr<blocks>> clu;
+    std::unordered_map<std::size_t, blocks*> clu;
 
   public:
     using options_type = __options;
     using blocks_type = blocks;
     using block_type = blocks::block;
 
-    void* allocate(std::size_t sz) {
-        if (opt.mm_threshold == 0 || sz <= opt.mm_threshold) {
-            auto& r = clu[sz];
-            if (!r) {
-                r.reset(new blocks(sz, this));
-            }
-            return r->acquire();
+    template <std::size_t N> void* allocate() {
+        if (opt.mm_threshold == 0 || N <= opt.mm_threshold) {
+            static thread_local blocks_type bls(N, this);
+            return bls.acquire();
         } else {
-            return ::malloc(sz);
+            block_type* bl = new block_type;
+            bl->parent = nullptr;
+            bl->next = nullptr;
+            return bl->entry();
         }
     }
     void deallocate(void* ptr) noexcept(true) {
         blocks::block* bl = (blocks::block*)((char*)ptr - 16);
-        bl->parent->give_back(bl);
+        if (bl->parent) {
+            bl->parent->give_back(bl);
+        } else {
+            ::free(bl);
+        }
     }
 
     constexpr const options_type& get_options() const noexcept(true) {

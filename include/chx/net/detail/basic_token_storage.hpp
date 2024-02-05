@@ -14,7 +14,7 @@
 #endif
 
 #ifndef CHXNET_TOKEN_STORAGE_ALLOCATOR
-#define CHXNET_TOKEN_STORAGE_ALLOCATOR ::chx::net::detail::dynamic_allocator
+#define CHXNET_TOKEN_STORAGE_ALLOCATOR ::chx::net::detail::default_allocator
 #endif
 
 namespace chx::net {
@@ -43,8 +43,8 @@ template <typename Ret, typename... Args> struct func_traits<Ret(Args...)> {
 };
 
 struct default_allocator {
-    void* allocate(std::size_t n) const {
-        if (void* p = ::malloc(n); p) {
+    template <std::size_t N> void* allocate() const {
+        if (void* p = ::malloc(N); p) {
             return p;
         } else {
             __CHXNET_THROW(errc::not_enough_memory);
@@ -54,7 +54,9 @@ struct default_allocator {
 };
 
 struct dynamic_allocator {
-    void* allocate(std::size_t n) const { return thread_mm.allocate(n); }
+    template <std::size_t N> void* allocate() const {
+        return thread_mm.template allocate<N>();
+    }
     void deallocate(void* ptr) const noexcept(true) {
         return thread_mm.deallocate(ptr);
     }
@@ -143,7 +145,7 @@ class basic_token_storage : CHXNET_NONCOPYABLE, Allocator {
             __M_ptr = new (__M_internal_buf)
                 __w(std::forward<CallableObj>(callable_obj));
         } else {
-            __M_ptr = new (Allocator::allocate(sizeof(__w)))
+            __M_ptr = new (Allocator::template allocate<sizeof(__w)>())
                 // (::malloc(sizeof(__w)))
                 __w(std::forward<CallableObj>(callable_obj));
             __M_last_sz = sizeof(__w);
@@ -179,7 +181,7 @@ class basic_token_storage : CHXNET_NONCOPYABLE, Allocator {
                     __destroy_and_release();
                     __M_ptr = static_cast<__base*>(
                         // ::malloc(sizeof(__w))
-                        Allocator::allocate(sizeof(__w)));
+                        Allocator::template allocate<sizeof(__w)>());
                     __M_last_sz = sizeof(__w);
                 } else {
                     std::destroy_at(__M_ptr);
@@ -187,7 +189,7 @@ class basic_token_storage : CHXNET_NONCOPYABLE, Allocator {
             } else {
                 __M_ptr = static_cast<__base*>(
                     // ::malloc(sizeof(__w))
-                    Allocator::allocate(sizeof(__w)));
+                    Allocator::template allocate<sizeof(__w)>());
                 __M_last_sz = sizeof(__w);
             }
             ::new (__M_ptr) __w(std::forward<CallableObj>(callable_obj));
@@ -220,7 +222,7 @@ class basic_token_storage : CHXNET_NONCOPYABLE, Allocator {
                     __destroy_and_release();
                     __M_ptr = static_cast<__base*>(
                         // ::malloc(sizeof(__w))
-                        Allocator::allocate(sizeof(__w)));
+                        Allocator::template allocate<sizeof(__w)>());
                     __M_last_sz = sizeof(__w);
                 } else {
                     std::destroy_at(__M_ptr);
@@ -228,7 +230,7 @@ class basic_token_storage : CHXNET_NONCOPYABLE, Allocator {
             } else {
                 __M_ptr = static_cast<__base*>(
                     // ::malloc(sizeof(__w))
-                    Allocator::allocate(sizeof(__w)));
+                    Allocator::template allocate<sizeof(__w)>());
                 __M_last_sz = sizeof(__w);
             }
             ::new (__M_ptr) __w(std::forward<Args>(args)...);
