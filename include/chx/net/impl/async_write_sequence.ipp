@@ -21,9 +21,28 @@ template <> struct async_operation<tags::async_write_seq> {
     template <typename... Ts>
     struct is_tuple<std::tuple<Ts...>> : std::true_type {};
 
-    // template <typename> struct is_cpp_array : std::false_type {};
-    // template <typename T, std::size_t Size>
-    // struct is_cpp_array<std::array<T, Size>> : std::true_type {};
+    template <typename> struct is_cpp_array : std::false_type {};
+    template <typename T, std::size_t Size>
+    struct is_cpp_array<std::array<T, Size>> : std::true_type {};
+
+    template <typename T>
+    constexpr static auto is_cpp_array_2_impl() noexcept(true) {
+        if constexpr (is_cpp_array<T>::value) {
+            using element_type = typename T::value_type;
+            if constexpr (std::is_same_v<std::remove_const_t<element_type>,
+                                         unsigned char> ||
+                          std::is_same_v<std::remove_const_t<element_type>,
+                                         char>) {
+                return std::false_type{};
+            } else {
+                return std::true_type{};
+            }
+        } else {
+            return std::false_type{};
+        }
+    }
+    template <typename T>
+    using is_cpp_array_2 = decltype(is_cpp_array_2_impl<T>());
 
     struct has_begin_end_impl {
         template <typename T, typename = decltype(std::declval<T>().begin()),
@@ -59,15 +78,14 @@ template <> struct async_operation<tags::async_write_seq> {
         return std::true_type{};
     }
 
-    // template <typename T>
-    // constexpr static auto
-    // traverse(T&& t,
-    //          sfinae_placeholder<
-    //              std::enable_if_t<is_cpp_array<std::decay_t<T>>::value ||
-    //                               std::is_array_v<std::remove_reference_t<T>>>>
-    //              _ = sfinae) {
-    //     return traverse(std::forward<T>(t)[0]);
-    // }
+    template <typename T>
+    constexpr static auto
+    traverse(T&& t,
+             sfinae_placeholder<
+                 std::enable_if_t<is_cpp_array_2<std::decay_t<T>>::value>>
+                 _ = sfinae) {
+        return traverse(std::forward<T>(t)[0]);
+    }
 
     template <typename T>
     constexpr static auto traverse(
@@ -84,15 +102,13 @@ template <> struct async_operation<tags::async_write_seq> {
     }
 
     template <typename T>
-    constexpr static auto traverse(
-        T&& t,
-        sfinae_placeholder<
-            std::enable_if_t<!(is_tuple<std::decay_t<T>>::value) &&
-                             //   !(is_cpp_array<std::decay_t<T>>::value ||
-                             //     std::is_array_v<std::remove_reference_t<
-                             //         T>>)&&
-                             !(is_atom<T&&>::value)>>
-            _ = sfinae) {
+    constexpr static auto
+    traverse(T&& t,
+             sfinae_placeholder<
+                 std::enable_if_t<!(is_tuple<std::decay_t<T>>::value) &&
+                                  !(is_cpp_array_2<std::decay_t<T>>::value) &&
+                                  !(is_atom<T&&>::value)>>
+                 _ = sfinae) {
         return std::false_type{};
     }
 
@@ -107,20 +123,19 @@ template <> struct async_operation<tags::async_write_seq> {
         sfinae_placeholder<std::enable_if_t<is_atom<T&&>::value>> _ = sfinae) {
         return std::integral_constant<std::size_t, 1>();
     }
-    // template <typename T>
-    // constexpr static auto iov_constexpr_size(
-    //     sfinae_placeholder<
-    //         std::enable_if_t<is_cpp_array<std::decay_t<T>>::value ||
-    //                          std::is_array_v<std::remove_reference_t<T>>>>
-    //         _ = sfinae) {
-    //     return std::integral_constant<
-    //         std::size_t,
-    //         iov_constexpr_size<
-    //             std::remove_reference_t<decltype(std::declval<T>()[0])>>()
-    //                 .value *
-    //             arr_N<std::remove_const_t<std::remove_reference_t<T&&>>>::
-    //                 value>();
-    // }
+    template <typename T>
+    constexpr static auto iov_constexpr_size(
+        sfinae_placeholder<
+            std::enable_if_t<is_cpp_array_2<std::decay_t<T>>::value>>
+            _ = sfinae) {
+        return std::integral_constant<
+            std::size_t,
+            iov_constexpr_size<
+                std::remove_reference_t<decltype(std::declval<T>()[0])>>()
+                    .value *
+                arr_N<std::remove_const_t<std::remove_reference_t<T&&>>>::
+                    value>();
+    }
     template <typename Tp, std::size_t... Idx>
     constexpr static auto
     traverse_tp_constexpr(std::integer_sequence<std::size_t, Idx...>) {
@@ -146,20 +161,18 @@ template <> struct async_operation<tags::async_write_seq> {
         return 1;
     }
 
-    // template <typename T>
-    // constexpr static std::size_t iov_static_size(
-    //     T&& t,
-    //     sfinae_placeholder<
-    //         std::enable_if_t<is_cpp_array<std::decay_t<T>>::value ||
-    //                          std::is_array_v<std::remove_reference_t<T>>>>
-    //         _ = sfinae) {
-    //     // change array[0:n] to for
-    //     std::size_t r = 0;
-    //     for (auto& i : t) {
-    //         r += iov_static_size(i);
-    //     }
-    //     return r;
-    // }
+    template <typename T>
+    constexpr static std::size_t iov_static_size(
+        T&& t, sfinae_placeholder<
+                   std::enable_if_t<is_cpp_array_2<std::decay_t<T>>::value>>
+                   _ = sfinae) {
+        // change array[0:n] to for
+        std::size_t r = 0;
+        for (auto& i : t) {
+            r += iov_static_size(i);
+        }
+        return r;
+    }
 
     template <typename T>
     constexpr static std::size_t iov_static_size(
@@ -175,13 +188,11 @@ template <> struct async_operation<tags::async_write_seq> {
 
     template <typename T>
     static std::size_t iov_static_size(
-        T&& t,
-        sfinae_placeholder<
-            std::enable_if_t<has_begin_end<T&&>::value>,
-            // std::enable_if_t<!(is_cpp_array<std::decay_t<T>>::value ||
-            //                    std::is_array_v<std::remove_reference_t<T>>)>,
-            std::enable_if_t<!is_atom<T&&>::value>>
-            _ = sfinae) {
+        T&& t, sfinae_placeholder<
+                   std::enable_if_t<has_begin_end<T&&>::value>,
+                   std::enable_if_t<!(is_cpp_array_2<std::decay_t<T>>::value)>,
+                   std::enable_if_t<!is_atom<T&&>::value>>
+                   _ = sfinae) {
         std::size_t r = 0;
         for (auto& i : t) {
             r += iov_static_size(i);
@@ -199,17 +210,16 @@ template <> struct async_operation<tags::async_write_seq> {
         ++v;
     }
 
-    // template <typename T>
-    // constexpr static void
-    // arr_fill(T&& t, iovec*& v,
-    //          sfinae_placeholder<
-    //              std::enable_if_t<is_cpp_array<std::decay_t<T>>::value ||
-    //                               std::is_array_v<std::remove_reference_t<T>>>>
-    //              _ = sfinae) {
-    //     for (auto& i : t) {
-    //         arr_fill(i, v);
-    //     }
-    // }
+    template <typename T>
+    constexpr static void
+    arr_fill(T&& t, iovec*& v,
+             sfinae_placeholder<
+                 std::enable_if_t<is_cpp_array_2<std::decay_t<T>>::value>>
+                 _ = sfinae) {
+        for (auto& i : t) {
+            arr_fill(i, v);
+        }
+    }
 
     template <typename T>
     constexpr static void arr_fill(
@@ -224,14 +234,13 @@ template <> struct async_operation<tags::async_write_seq> {
     }
 
     template <typename T>
-    static void arr_fill(
-        T&& t, iovec*& v,
-        sfinae_placeholder<
-            std::enable_if_t<has_begin_end<T&&>::value>,
-            // std::enable_if_t<!(is_cpp_array<std::decay_t<T>>::value ||
-            //                    std::is_array_v<std::remove_reference_t<T>>)>,
-            std::enable_if_t<!is_atom<T&&>::value>>
-            _ = sfinae) {
+    static void
+    arr_fill(T&& t, iovec*& v,
+             sfinae_placeholder<
+                 std::enable_if_t<has_begin_end<T&&>::value>,
+                 std::enable_if_t<!(is_cpp_array_2<std::decay_t<T>>::value)>,
+                 std::enable_if_t<!is_atom<T&&>::value>>
+                 _ = sfinae) {
         for (auto& i : t) {
             arr_fill(i, v);
         }
