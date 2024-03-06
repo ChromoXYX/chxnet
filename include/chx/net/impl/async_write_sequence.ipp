@@ -25,14 +25,24 @@ template <> struct async_operation<tags::async_write_seq> {
     template <typename T, std::size_t Size>
     struct is_cpp_array<std::array<T, Size>> : std::true_type {};
 
+    template <typename T> constexpr static auto value_type_check_impl() {
+        using rc_t = std::remove_const_t<T>;
+        if constexpr (std::is_same_v<rc_t, unsigned char> ||
+                      std::is_same_v<rc_t, char> ||
+                      std::is_same_v<rc_t, void>) {
+            return std::true_type{};
+        } else {
+            return std::false_type{};
+        }
+    }
+    template <typename T>
+    using value_type_check = decltype(value_type_check_impl<T>());
+
     template <typename T>
     constexpr static auto is_cpp_array_2_impl() noexcept(true) {
         if constexpr (is_cpp_array<T>::value) {
             using element_type = typename T::value_type;
-            if constexpr (std::is_same_v<std::remove_const_t<element_type>,
-                                         unsigned char> ||
-                          std::is_same_v<std::remove_const_t<element_type>,
-                                         char>) {
+            if constexpr (value_type_check<element_type>::value) {
                 return std::false_type{};
             } else {
                 return std::true_type{};
@@ -55,15 +65,12 @@ template <> struct async_operation<tags::async_write_seq> {
     template <typename T> constexpr static auto is_atom2() noexcept(true) {
         if constexpr (std::is_array_v<std::remove_reference_t<T>>) {
             using vt = std::decay_t<decltype(std::declval<T>()[0])>;
-            return std::integral_constant<
-                bool, (std::is_same_v<vt, char> ||
-                       std::is_same_v<vt, unsigned char>)>{};
+            return std::integral_constant<bool, value_type_check<vt>::value>{};
         } else {
             if constexpr (is_buffer<std::decay_t<T>>::value) {
                 using vt = std::decay_t<decltype(*std::declval<T>().data())>;
-                return std::integral_constant<
-                    bool, (std::is_same_v<vt, char> ||
-                           std::is_same_v<vt, unsigned char>)>{};
+                return std::integral_constant<bool,
+                                              value_type_check<vt>::value>{};
             } else {
                 return std::false_type{};
             }
