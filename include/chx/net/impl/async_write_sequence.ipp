@@ -63,18 +63,18 @@ template <> struct async_operation<tags::async_write_seq> {
     using has_begin_end = std::is_constructible<has_begin_end_impl, T>;
 
     template <typename T> constexpr static auto is_atom2() noexcept(true) {
-        if constexpr (std::is_array_v<std::remove_reference_t<T>>) {
-            using vt = std::decay_t<decltype(std::declval<T>()[0])>;
+        // if constexpr (std::is_array_v<std::remove_reference_t<T>>) {
+        //     using vt = std::decay_t<decltype(std::declval<T>()[0])>;
+        //     return std::integral_constant<bool,
+        //     value_type_check<vt>::value>{};
+        // } else {
+        if constexpr (is_buffer<std::decay_t<T>>::value) {
+            using vt = typename std::decay_t<T>::value_type;
             return std::integral_constant<bool, value_type_check<vt>::value>{};
         } else {
-            if constexpr (is_buffer<std::decay_t<T>>::value) {
-                using vt = std::decay_t<decltype(*std::declval<T>().data())>;
-                return std::integral_constant<bool,
-                                              value_type_check<vt>::value>{};
-            } else {
-                return std::false_type{};
-            }
+            return std::false_type{};
         }
+        // }
     }
     template <typename T> using is_atom = decltype(is_atom2<T>());
 
