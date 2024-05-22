@@ -1,6 +1,6 @@
 #pragma once
 
-#include <bits/types/struct_iovec.h>
+#include "./buffer.hpp"
 #include <cstddef>
 
 namespace chx::net {
@@ -11,6 +11,8 @@ struct iovec_buffer : iovec {
         iovec::iov_base = ptr;
         iovec::iov_len = len;
     }
+    iovec_buffer(const_buffer buf) noexcept(true)
+        : iovec_buffer((void*)buf.data(), buf.size()) {}
 
     using value_type = void*;
 
