@@ -29,9 +29,30 @@ struct session : std::enable_shared_from_this<session> {
     }
 
     void do_write() {
-        sock.async_write_some(
-            net::buffer(s), [self = shared_from_this()](
-                                const std::error_code& ec, std::size_t size) {
+        std::tuple<std::string_view, std::variant<std::string, std::string_view,
+                                                  std::tuple<std::string>>>
+            data{"Response: ", {}};
+        static int flag = 0;
+        switch (flag) {
+        case 0: {
+            std::get<1>(data).emplace<0>("string!" + s + "\n");
+            break;
+        }
+        case 1: {
+            std::get<1>(data).emplace<1>("fixed string_view! try again!\n");
+            break;
+        }
+        case 2: {
+            std::get<1>(data).emplace<2>(
+                std::make_tuple("in tuple!" + s + "\n"));
+            break;
+        }
+        }
+        flag = (flag + 1) % 3;
+        net::async_write_sequence_exactly(
+            sock, std::move(data),
+            [self = shared_from_this()](const std::error_code& ec,
+                                        std::size_t size) {
                 if (!ec) {
                     self->do_read();
                 } else {
@@ -45,7 +66,7 @@ struct server {
     net::ip::tcp::acceptor acceptor;
 
     server(net::io_context& ctx)
-        : acceptor(ctx, net::ip::tcp::endpoint(net::ip::tcp::v4(), 12345)) {}
+        : acceptor(ctx, net::ip::tcp::endpoint(net::ip::tcp::v4(), 10000)) {}
 
     void do_accept() {
         acceptor.async_accept(

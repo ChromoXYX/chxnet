@@ -7,6 +7,8 @@
 #include "../buffer.hpp"
 #include "../async_combine.hpp"
 
+#include <variant>
+
 namespace chx::net::detail {
 // now, stream.async_write_some(seq) ->  not managed
 //      net::async_write_sequence(seq) ->    managed
@@ -24,6 +26,10 @@ template <> struct async_operation<tags::async_write_seq> {
     template <typename> struct is_cpp_array : std::false_type {};
     template <typename T, std::size_t Size>
     struct is_cpp_array<std::array<T, Size>> : std::true_type {};
+
+    template <typename> struct is_variant : std::false_type {};
+    template <typename... Ts>
+    struct is_variant<std::variant<Ts...>> : std::true_type {};
 
     template <typename T> constexpr static auto value_type_check_impl() {
         using rc_t = std::remove_const_t<T>;
@@ -194,6 +200,21 @@ template <> struct async_operation<tags::async_write_seq> {
     }
 
     template <typename T>
+    constexpr static std::size_t iov_static_size(
+        T&& t,
+        sfinae_placeholder<std::enable_if_t<is_variant<std::decay_t<T>>::value>>
+            _ = sfinae) {
+        return !t.valueless_by_exception()
+                   ? std::visit(
+                         [](auto&& v) {
+                             return iov_static_size(
+                                 std::forward<decltype(v)>(v));
+                         },
+                         std::forward<T>(t))
+                   : 0;
+    }
+
+    template <typename T>
     static std::size_t iov_static_size(
         T&& t, sfinae_placeholder<
                    std::enable_if_t<has_begin_end<T&&>::value>,
@@ -238,6 +259,20 @@ template <> struct async_operation<tags::async_write_seq> {
                 (arr_fill(std::forward<decltype(ts)>(ts), v), ...);
             },
             std::forward<T>(t));
+    }
+
+    template <typename T>
+    constexpr static void arr_fill(
+        T&& t, iovec*& v,
+        sfinae_placeholder<std::enable_if_t<is_variant<std::decay_t<T>>::value>>
+            _ = sfinae) {
+        if (!t.valueless_by_exception()) {
+            std::visit(
+                [&v](auto&& item) {
+                    arr_fill(std::forward<decltype(item)>(item), v);
+                },
+                std::forward<T>(t));
+        }
     }
 
     template <typename T>
