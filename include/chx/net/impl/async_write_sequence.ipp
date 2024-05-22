@@ -6,6 +6,7 @@
 #include "../io_context.hpp"
 #include "../buffer.hpp"
 #include "../async_combine.hpp"
+#include "../iovec_buffer.hpp"
 
 #include <variant>
 
@@ -30,6 +31,11 @@ template <> struct async_operation<tags::async_write_seq> {
     template <typename> struct is_variant : std::false_type {};
     template <typename... Ts>
     struct is_variant<std::variant<Ts...>> : std::true_type {};
+
+    template <typename T> struct is_iovec_vector : std::false_type {};
+    template <typename Allocator>
+    struct is_iovec_vector<std::vector<iovec_buffer, Allocator>>
+        : std::true_type {};
 
     template <typename T> constexpr static auto value_type_check_impl() {
         using rc_t = std::remove_const_t<T>;
@@ -285,6 +291,11 @@ template <> struct async_operation<tags::async_write_seq> {
                  _ = sfinae) {
         for (auto& i : t) {
             arr_fill(i, v);
+        }
+        if constexpr (is_iovec_vector<std::decay_t<T>>::value) {
+            if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
+                t.clear();
+            }
         }
     }
 
