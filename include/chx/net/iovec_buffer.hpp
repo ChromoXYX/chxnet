@@ -14,9 +14,11 @@ struct iovec_buffer : iovec {
     iovec_buffer(const_buffer buf) noexcept(true)
         : iovec_buffer((void*)buf.data(), buf.size()) {}
 
-    using value_type = void*;
+    using value_type = unsigned char;
 
-    constexpr void* data() noexcept(true) { return iovec::iov_base; }
+    constexpr value_type* data() noexcept(true) {
+        return static_cast<value_type*>(iovec::iov_base);
+    }
     constexpr std::size_t size() const noexcept(true) { return iovec::iov_len; }
 };
 }  // namespace chx::net
