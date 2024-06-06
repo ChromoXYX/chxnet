@@ -56,11 +56,11 @@ class file : public file_descriptor {
 
     void openat(const char* filename, std::error_code& e) noexcept(true) {
         struct open_how _h = {};
-        __openat2(-1, filename, &_h, e);
+        __openat2(AT_FDCWD, filename, &_h, e);
     }
     void openat(const char* filename, const open_how& h,
                 std::error_code& e) noexcept(true) {
-        __openat2(-1, filename, &h, e);
+        __openat2(AT_FDCWD, filename, &h, e);
     }
     void openat(const file_descriptor& dir, const char* filename,
                 std::error_code& e) noexcept(true) {
