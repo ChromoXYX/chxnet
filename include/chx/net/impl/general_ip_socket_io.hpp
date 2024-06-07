@@ -196,11 +196,14 @@ operator()(io_context* ctx, Socket* sock,
                                  iovec_arr.size(), 0);
             ctx->submit();
         } else {
-            std::vector<struct iovec> iovec_vec(std::distance(
-                const_buffer_sequence.begin(), const_buffer_sequence.end()));
-            auto iterator = iovec_vec.begin();
-            for (const auto& i : const_buffer_sequence) {
-                *(iterator++) = detail::to_iovec_const(const_buffer(i));
+            std::size_t iovec_len =
+                std::min(std::distance(const_buffer_sequence.begin(),
+                                       const_buffer_sequence.end()),
+                         1024);
+            std::vector<struct iovec> iovec_vec(iovec_len);
+            auto iterator = const_buffer_sequence.begin();
+            for (auto& iov : iovec_vec) {
+                iov = detail::to_iovec_const(const_buffer(*(iterator++)));
             }
             sqe = ctx->get_sqe(task);
             io_uring_prep_writev(sqe, sock->native_handler(), iovec_vec.data(),
@@ -211,7 +214,7 @@ operator()(io_context* ctx, Socket* sock,
         io_uring_sqe* sqe = ctx->get_sqe(task);
         io_uring_prep_writev(sqe, sock->native_handler(),
                              const_buffer_sequence.data(),
-                             const_buffer_sequence.size(), 0);
+                             std::min(const_buffer_sequence.size(), std::size_t{1024}), 0);
     }
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(

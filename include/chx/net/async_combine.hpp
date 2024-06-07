@@ -84,12 +84,7 @@ struct async_combine_impl
             next());
     }
 
-    ~async_combine_impl() {
-        for (auto* subtask : __M_subtasks) {
-            subtask->__M_token.emplace(
-                [](io_context::task_t*) -> int { return 0; });
-        }
-    }
+    ~async_combine_impl() {}
 
     int operator()(io_context::task_t*);
 

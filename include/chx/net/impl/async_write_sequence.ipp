@@ -177,7 +177,7 @@ template <> struct async_operation<tags::async_write_seq> {
     constexpr static std::size_t iov_static_size(
         T&& t,
         sfinae_placeholder<std::enable_if_t<is_atom<T&&>::value>> _ = sfinae) {
-        return 1;
+        return net::buffer(t).size() != 0;
     }
 
     template <typename T>
@@ -239,9 +239,11 @@ template <> struct async_operation<tags::async_write_seq> {
         T&& t, iovec*& v,
         sfinae_placeholder<std::enable_if_t<is_atom<T&&>::value>> _ = sfinae) {
         auto buffer = net::buffer(std::forward<T>(t));
-        v->iov_base = const_cast<void*>(buffer.data());
-        v->iov_len = buffer.size();
-        ++v;
+        if (buffer.size()) {
+            v->iov_base = const_cast<void*>(buffer.data());
+            v->iov_len = buffer.size();
+            ++v;
+        }
     }
 
     template <typename T>
