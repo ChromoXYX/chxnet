@@ -309,11 +309,7 @@ class io_context : CHXNET_NONCOPYABLE {
         // __M_mt_closed.test_and_set(std::memory_order_acquire);
 
         struct io_uring_params params = {};
-#if CHXNET_ENABLE_SQPOLL
-        if (getuid() == 0) {
-            params.flags |= IORING_SETUP_SQPOLL;
-        }
-#endif
+        // params.flags |= IORING_SETUP_SQPOLL;
         params.features |= IORING_FEAT_FAST_POLL | IORING_FEAT_CQE_SKIP;
         if (int r = io_uring_queue_init_params(
                 static_task_sz > 4096 ? static_task_sz : 4096, &__M_ring,

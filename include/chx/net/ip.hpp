@@ -231,6 +231,44 @@ class address {
         }
     }
 
+    static address from_string(const char* addr,
+                                std::error_code& ec) noexcept(true) {
+        ec.clear();
+        address_v4 v4 = address_v4::from_string(addr, ec);
+        if (!ec) {
+            return v4;
+        }
+        address_v6 v6 = address_v6::from_string(addr, ec);
+        if (!ec) {
+            return v6;
+        }
+        detail::assign_ec(ec, errc::invalid_argument);
+        return {};
+    }
+    static address from_string(const std::string& addr,
+                                std::error_code& ec) noexcept(true) {
+        return from_string(addr.c_str(), ec);
+    }
+
+    static address from_string(const char* addr) {
+        std::error_code ec;
+        address ret = from_string(addr, ec);
+        if (!ec) {
+            return ret;
+        } else {
+            __CHXNET_THROW_EC(ec);
+        }
+    }
+    static address from_string(const std::string& addr) {
+        std::error_code ec;
+        address ret = from_string(addr, ec);
+        if (!ec) {
+            return ret;
+        } else {
+            __CHXNET_THROW_EC(ec);
+        }
+    }
+
     static address from_sockaddr(struct sockaddr* addr) noexcept(true) {
         if (addr->sa_family == AF_INET6) {
             auto* addr6 = reinterpret_cast<struct sockaddr_in6*>(addr);
