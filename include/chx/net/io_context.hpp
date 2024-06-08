@@ -1,12 +1,15 @@
 #pragma once
 
+#include <cassert>
 #include <liburing.h>
 
 #include <memory>
 #include <vector>
+#include <set>
 
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
+#include "./detail/flat_set.hpp"
 #include "./error_code.hpp"
 
 #include <cstdint>
@@ -95,17 +98,7 @@ class io_context : CHXNET_NONCOPYABLE {
     };
 
     std::vector<std::unique_ptr<__task_t>> __M_dynamic_task_queue;
-    std::size_t __M_dyn_total = 0;
     std::size_t __M_dyn_end = 0;
-
-    // std::queue<std::unique_ptr<detail::basic_token_storage<void(), 48>>>
-    //     __M_mt_tasks;
-    // // std::atomic_flag __M_mt_closed = ATOMIC_FLAG_INIT;
-    // std::atomic_bool __M_mt_destruct = false;
-    // // alignas(64) std::atomic_flag __M_mt_flag = ATOMIC_FLAG_INIT;
-    // alignas(64) std::atomic_bool __M_mt_flag2 = false;
-    // alignas(64) std::mutex __M_mt_mutex;
-    // bool __M_destruct = false;
 
     static_assert(
         std::is_nothrow_destructible_v<__task_t> &&
@@ -119,23 +112,17 @@ class io_context : CHXNET_NONCOPYABLE {
     using task_t = __task_t;
 
   protected:
+    detail::flat_set<std::size_t> __M_avail_set;
     __task_t* acquire() {
-        if (__M_dyn_total < __M_dynamic_task_queue.size()) {
-            for (std::size_t idx = 0; idx < __M_dyn_end + 1; ++idx) {
-                if (!__M_dynamic_task_queue[idx]->__M_avail) {
-                    continue;
-                } else {
-                    auto* p = __M_dynamic_task_queue[idx].get();
-                    ++__M_dyn_total;
-                    p->__M_avail = false;
-                    return p;
-                }
-            }
+        if (!__M_avail_set.empty()) {
+            auto* p = __M_dynamic_task_queue[*__M_avail_set.begin()].get();
+            __M_avail_set.erase(__M_avail_set.begin());
+            p->__M_avail = false;
+            return p;
             __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
         } else {
             __M_dynamic_task_queue.emplace_back(new __task_t(this));
 
-            ++__M_dyn_total;
             __M_dyn_end = __M_dynamic_task_queue.size() - 1;
 
             auto* p = __M_dynamic_task_queue.back().get();
@@ -147,10 +134,10 @@ class io_context : CHXNET_NONCOPYABLE {
 
     void release(__task_t* task) noexcept(true) {
         if (task->__M_dyn_idx != task->__END) {
-            --__M_dyn_total;
-            if (__M_dyn_total == 0) {
+            if (outstanding_tasks() == 1) {
                 __M_dyn_end = 0;
                 __M_dynamic_task_queue.clear();
+                __M_avail_set.clear();
                 return;
             }
             task->__M_avail = true;
@@ -165,7 +152,10 @@ class io_context : CHXNET_NONCOPYABLE {
                 __M_dynamic_task_queue.erase(__M_dynamic_task_queue.begin() +
                                                  idx + 1,
                                              __M_dynamic_task_queue.end());
+                __M_avail_set.erase(__M_avail_set.lower_bound(idx + 1),
+                                    __M_avail_set.end());
             } else {
+                assert(__M_avail_set.insert(task->__M_dyn_idx).second);
                 task->reset();
             }
         }
@@ -224,7 +214,7 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     void __run() {
-        while (__M_dyn_total) {
+        while (outstanding_tasks()) {
             if (int r = io_uring_submit_and_wait(&__M_ring, 1); r < 0) {
                 __CHXNET_THROW_WITH(-r, bad_io_context_exec);
             }
@@ -383,7 +373,7 @@ class io_context : CHXNET_NONCOPYABLE {
     decltype(auto) async_nop(CompletionToken&& completion_token);
 
     constexpr std::size_t outstanding_tasks() const noexcept(true) {
-        return __M_dyn_total;
+        return __M_dynamic_task_queue.size() - __M_avail_set.size();
     }
 };
 }  // namespace chx::net
