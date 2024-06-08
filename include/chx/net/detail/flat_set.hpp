@@ -13,6 +13,12 @@ class flat_set : Compare {
     using __container_type = std::vector<value_type>;
     __container_type __M_c;
 
+    template <typename T, typename R>
+    constexpr bool __equal(T&& t, R&& r) const noexcept(true) {
+        return !(static_cast<const Compare&>(*this)(t, r)) &&
+               !(static_cast<const Compare&>(*this)(r, t));
+    }
+
   public:
     using iterator = typename __container_type::iterator;
     using const_iterator = typename __container_type::const_iterator;
@@ -38,35 +44,50 @@ class flat_set : Compare {
     constexpr bool empty() const noexcept(true) { return __M_c.empty(); }
     void clear() noexcept(true) { __M_c.clear(); }
 
+    template <typename K> constexpr iterator find(K&& k) noexcept(true) {
+        auto [__front, __tail] = equal_range(std::forward<K>(k));
+        if (__front == end() || (!__equal(std::forward<K>(k), *__front))) {
+            return end();
+        } else {
+            return __front;
+        }
+    }
+
     template <typename K> constexpr iterator lower_bound(K&& k) noexcept(true) {
-        return std::lower_bound(begin(), end(), std::forward<K>(k));
+        return std::lower_bound(begin(), end(), std::forward<K>(k),
+                                static_cast<Compare&>(*this));
     }
     template <typename K>
     constexpr const_iterator lower_bound(K&& k) const noexcept(true) {
-        return std::lower_bound(begin(), end(), std::forward<K>(k));
+        return std::lower_bound(begin(), end(), std::forward<K>(k),
+                                static_cast<Compare&>(*this));
     }
 
     template <typename K> constexpr iterator upper_bound(K&& k) noexcept(true) {
-        return std::upper_bound(begin(), end(), std::forward<K>(k));
+        return std::upper_bound(begin(), end(), std::forward<K>(k),
+                                static_cast<Compare&>(*this));
     }
     template <typename K>
     constexpr const_iterator upper_bound(K&& k) const noexcept(true) {
-        return std::upper_bound(begin(), end(), std::forward<K>(k));
+        return std::upper_bound(begin(), end(), std::forward<K>(k),
+                                static_cast<Compare&>(*this));
     }
 
     template <typename K>
     constexpr std::pair<iterator, iterator> equal_range(K&& k) noexcept(true) {
-        return std::equal_range(begin(), end(), std::forward<K>(k));
+        return std::equal_range(begin(), end(), std::forward<K>(k),
+                                static_cast<Compare&>(*this));
     }
     template <typename K>
     constexpr std::pair<const_iterator, const_iterator> equal_range(K&& k) const
         noexcept(true) {
-        return std::equal_range(begin(), end(), std::forward<K>(k));
+        return std::equal_range(begin(), end(), std::forward<K>(k),
+                                static_cast<Compare&>(*this));
     }
 
     template <typename T> std::pair<iterator, bool> insert(T&& t) {
         auto [__front, __tail] = equal_range(std::forward<T>(t));
-        if (__front == end() || (__front != end() && *__front != t)) {
+        if (__front == end() || !__equal(std::forward<T>(t), *__front)) {
             return {__M_c.insert(__front, std::forward<T>(t)), true};
         } else {
             return {__front, false};
@@ -94,7 +115,14 @@ class flat_set : Compare {
         return __tail - __front;
     }
     template <typename K> constexpr bool contains(K&& k) const {
-        return find(std::forward<K>(k)) != end();
+        return std::binary_search(begin(), end(), std::forward<K>(k),
+                                  static_cast<Compare&>(*this));
+    }
+
+    value_type extract(iterator pos) {
+        value_type r = std::move(*pos);
+        erase(pos);
+        return std::move(r);
     }
 };
 }  // namespace chx::net::detail

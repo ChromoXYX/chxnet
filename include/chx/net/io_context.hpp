@@ -115,8 +115,9 @@ class io_context : CHXNET_NONCOPYABLE {
     detail::flat_set<std::size_t> __M_avail_set;
     __task_t* acquire() {
         if (!__M_avail_set.empty()) {
-            auto* p = __M_dynamic_task_queue[*__M_avail_set.begin()].get();
-            __M_avail_set.erase(__M_avail_set.begin());
+            auto ite = __M_avail_set.end() - 1;
+            auto* p = __M_dynamic_task_queue[*ite].get();
+            __M_avail_set.erase(ite);
             p->__M_avail = false;
             return p;
             __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
