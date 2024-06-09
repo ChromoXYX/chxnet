@@ -10,10 +10,10 @@ struct file_openat2 {};
 template <> struct async_operation<tags::file_openat2> {
     template <typename CompletionToken>
     decltype(auto) operator()(io_context* ctx, file* f, int dirfd,
-                              const char* filename, open_how h,
+                              const char* filename, const open_how& h,
                               CompletionToken&& completion_token) {
         auto [sqe, task] = ctx->get();
-        io_uring_prep_openat2(sqe, dirfd, filename, &h);
+        io_uring_prep_openat2(sqe, dirfd, filename, const_cast<open_how*>(&h));
         ctx->submit();
         task->__M_additional = reinterpret_cast<std::size_t>(f);
 
