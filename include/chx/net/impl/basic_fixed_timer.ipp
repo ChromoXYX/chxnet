@@ -158,7 +158,7 @@ template <> struct async_operation<tags::fixed_timer> {
             tp, std::make_unique<io_context::task_t>(timer->__M_ctx)));
         io_context::task_t* task = ite->second.get();
         task->__M_avail = true;
-        task->__M_cancel_invoke = true;
+        task->__M_cancel_invoke = false;
         task->__M_additional = reinterpret_cast<std::uint64_t>(timer);
         task->__M_custom_cancellation.reset(
             new async_operation<tags::fxd_tmr_cncl_cntl>::controller(timer,

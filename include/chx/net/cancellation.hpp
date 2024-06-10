@@ -49,6 +49,9 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
     void clear() noexcept(true) { __M_op.reset(); }
     detail::cancellation_base* get() noexcept(true) { return __M_op.get(); }
 
+    bool valid() const noexcept(true) { return __M_op.get(); }
+    operator bool() const noexcept(true) { return valid(); }
+
   private:
     void assign(io_context::task_t* task) noexcept(true) {
         struct ops : detail::cancellation_base {
@@ -109,6 +112,7 @@ template <typename BindCompletionToken> struct cancellation_ops {
     decltype(auto) generate_token(io_context::task_t* task,
                                   FinalFunctor&& final_functor) {
         if (task->__M_custom_cancellation) {
+            assert(!task->__M_cancel_invoke);
             (*task->__M_custom_cancellation)(signal);
         } else {
             signal.assign(task);
