@@ -8,6 +8,9 @@ template <typename Stream, typename DynamicBuffer, typename StopCondition,
 decltype(auto) async_read_until(Stream& stream, DynamicBuffer&& dynamic_buffer,
                                 StopCondition&& stop_condition,
                                 CompletionToken&& completion_token);
+template <typename Stream, typename DynamicBuffer, typename CompletionToken>
+decltype(auto) async_read_until(Stream& stream, DynamicBuffer&& dynamic_buffer,
+                                CompletionToken&& completion_token);
 }  // namespace chx::net
 
 #include "./impl/async_read_until.ipp"

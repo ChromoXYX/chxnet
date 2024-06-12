@@ -7,24 +7,29 @@
 #include "../buffer_sequence.hpp"
 #include "../async_combine.hpp"
 #include "../ip.hpp"
+#include "../dynamic_buffer.hpp"
 
 #include <netinet/in.h>
 
 namespace chx::net::detail::tags {
 struct read_until {
     template <typename Socket, typename DynamicBuffer, typename StopCond,
-              typename CntlType = void>
+              std::size_t Type, typename CntlType = void>
     struct operation : StopCond {
         DynamicBuffer dyn_buf;
         Socket& socket;
 
         template <typename CntlT>
-        using rebind = operation<Socket, DynamicBuffer, StopCond, CntlT>;
+        using rebind = operation<Socket, DynamicBuffer, StopCond, Type, CntlT>;
 
         template <typename DynBuf, typename SC>
         constexpr operation(Socket& sock, DynBuf&& buf, SC&& sc)
-            : socket(sock), dyn_buf(std::forward<DynBuf>(buf)),
-              StopCond(std::forward<SC>(sc)) {}
+            : StopCond(std::forward<SC>(sc)), socket(sock),
+              dyn_buf(std::forward<DynBuf>(buf)) {}
+        template <typename SC>
+        constexpr operation(Socket& sock, SC&& sc)
+            : StopCond(std::forward<SC>(sc)), socket(sock),
+              dyn_buf(dynamic_buffer{StopCond::container()}) {}
 
         template <typename Cntl> void operator()(Cntl& cntl) {
             static_assert(!std::is_same_v<CntlType, void>);
@@ -46,36 +51,63 @@ struct read_until {
                     dyn_buf.shrink();
                     // pos == npos and ec == eof will not occur at same time, if
                     // nothing went wrong.
-                    cntl.complete(ec, pos);
+                    if constexpr (Type == 0) {
+                        cntl.complete(ec, pos);
+                    } else {
+                        cntl.complete(
+                            ec, std::make_pair(
+                                    std::move(dyn_buf.underlying_container()),
+                                    pos));
+                    }
                 } else {
                     dyn_buf.extend(StopCond::extend_size());
                     if (dyn_buf.size()) {
                         socket.async_read_some(buffer(dyn_buf), cntl.next());
                     } else {
                         // max size
-                        cntl.complete(ec, std::string_view::npos);
+                        if constexpr (Type == 0) {
+                            cntl.complete(ec, std::string_view::npos);
+                        } else {
+                            cntl.complete(
+                                ec,
+                                std::make_pair(
+                                    std::move(dyn_buf.underlying_container()),
+                                    std::string_view::npos));
+                        }
                     }
                 }
             } else {
-                cntl.complete(ec, 0);
+                if constexpr (Type == 0) {
+                    cntl.complete(ec, 0);
+                } else {
+                    cntl.complete(
+                        ec, std::make_pair(
+                                std::move(dyn_buf.underlying_container()), 0));
+                }
             }
         }
     };
     template <typename Socket, typename DynamicBuffer, typename StopCond>
     operation(Socket&, DynamicBuffer&&, StopCond&&)
         -> operation<Socket, std::remove_reference_t<DynamicBuffer>,
-                     std::remove_reference_t<StopCond>>;
+                     std::remove_reference_t<StopCond>, 0>;
+    template <typename Socket, typename StopCond>
+    operation(Socket&, StopCond&&) -> operation<
+        Socket,
+        net::dynamic_buffer<typename std::decay_t<StopCond>::container_type>,
+        std::remove_reference_t<StopCond>, 1>;
 
     struct stop_cond {
         std::basic_string_view<unsigned char> pattern;
 
         template <typename CharT>
-        constexpr stop_cond(std::basic_string_view<CharT> view) noexcept(true)
+        constexpr explicit stop_cond(
+            std::basic_string_view<CharT> view) noexcept(true)
             : pattern(static_cast<const unsigned char*>(
                           static_cast<const void*>(view.data())),
                       view.size()) {}
         template <typename CharT, std::size_t Size>
-        constexpr stop_cond(const CharT (&s)[Size]) noexcept(true)
+        constexpr explicit stop_cond(const CharT (&s)[Size]) noexcept(true)
             : pattern(static_cast<const unsigned char*>(
                           static_cast<const void*>(s)),
                       Size - 1) {}
@@ -94,7 +126,7 @@ struct read_until {
         unsigned char const c;
 
         template <typename CharT>
-        constexpr stop_cond_char(
+        constexpr explicit stop_cond_char(
             CharT ch,
             net::detail::sfinae_placeholder<
                 std::enable_if_t<std::is_convertible_v<CharT, unsigned char>>>
@@ -169,6 +201,9 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::read_until> {
               typename CompletionToken>
     decltype(auto) operator()(io_context*, Socket*, DynamicBuffer&&, StopCond&&,
                               CompletionToken&&);
+    template <typename Socket, typename StopCond, typename CompletionToken>
+    decltype(auto) operator()(io_context*, Socket*, StopCond&&,
+                              CompletionToken&&);
 };
 
 template <typename T> struct fill_iov_made : std::false_type {};
@@ -212,9 +247,9 @@ operator()(io_context* ctx, Socket* sock,
         }
     } else {
         io_uring_sqe* sqe = ctx->get_sqe(task);
-        io_uring_prep_writev(sqe, sock->native_handler(),
-                             const_buffer_sequence.data(),
-                             std::min(const_buffer_sequence.size(), std::size_t{1024}), 0);
+        io_uring_prep_writev(
+            sqe, sock->native_handler(), const_buffer_sequence.data(),
+            std::min(const_buffer_sequence.size(), std::size_t{1024}), 0);
     }
     return detail::async_token_init(
         task->__M_token.emplace(detail::async_token_generate(
@@ -334,6 +369,22 @@ operator()(io_context* ctx, Socket* sock, DynamicBuffer&& dynamic_buffer,
         *ctx, std::forward<CompletionToken>(completion_token),
         type_identity<operation_type>(), *sock,
         std::forward<DynamicBuffer>(dynamic_buffer),
+        tags::read_until::make_stop_cond(std::forward<StopCond>(stop_cond)));
+}
+template <typename Socket, typename StopCond, typename CompletionToken>
+decltype(auto)
+chx::net::detail::async_operation<chx::net::detail::tags::read_until>::
+operator()(io_context* ctx, Socket* sock, StopCond&& stop_cond,
+           CompletionToken&& completion_token) {
+    using operation_type = decltype(tags::read_until::operation(
+        *sock,
+        tags::read_until::make_stop_cond(std::forward<StopCond>(stop_cond))));
+    return async_combine<
+        const std::error_code&,
+        std::pair<typename std::decay_t<StopCond>::container_type,
+                  std::size_t>>(
+        *ctx, std::forward<CompletionToken>(completion_token),
+        type_identity<operation_type>(), *sock,
         tags::read_until::make_stop_cond(std::forward<StopCond>(stop_cond)));
 }
 
