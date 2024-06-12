@@ -121,6 +121,10 @@ template <typename Socket> class stream : public Socket {
             std::enable_if_t<!net::detail::is_const_buffer<IovArr>::value>>
             _ = net::detail::sfinae);
 };
+
+template <typename Socket> struct is_ssl_stream : std::false_type {};
+template <typename Socket>
+struct is_ssl_stream<stream<Socket>> : std::true_type {};
 }  // namespace chx::net::ssl
 
 #include "./impl/do_handshake.ipp"
