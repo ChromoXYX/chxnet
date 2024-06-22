@@ -10,38 +10,32 @@ struct fxd_tmr_cncl_cntl {};
 template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
     template <typename Timer> struct controller;
     template <typename Timer> struct fxd_tmr_cncl : detail::cancellation_base {
-        controller<Timer>* controller_ = nullptr;
+        weak_ptr<controller<Timer>> controller_;
 
-        Timer* timer() { return controller_->timer; }
+        Timer& timer() { return *controller_->timer; }
         io_context::task_t* task() { return controller_->task; }
 
-        fxd_tmr_cncl(controller<Timer>* p) : controller_(p) {}
-        ~fxd_tmr_cncl() { release(); }
+        fxd_tmr_cncl(controller<Timer>* p) : controller_(p->weak_from_this()) {}
+        ~fxd_tmr_cncl() {}
 
-        void release() {
-            if (valid()) {
-                for (auto ite = controller_->tracker().lower_bound(task());
-                     ite != controller_->tracker().end() &&
-                     ite->first == task();
-                     ++ite) {
-                    if (ite->second == this) {
-                        controller_->tracker().erase(ite);
-                        break;
-                    }
-                }
-                controller_ = nullptr;
-            }
+        constexpr void release() noexcept(true) { controller_.release(); }
+
+        constexpr bool controller_valid() noexcept(true) {
+            return !controller_.expired();
         }
-        constexpr bool valid() noexcept(true) { return controller_ != nullptr; }
+        constexpr bool timer_valid() noexcept(true) {
+            return controller_valid() && controller_->timer_valid();
+        }
+        constexpr bool valid() noexcept(true) { return timer_valid(); }
 
         void operator()() override {
             if (valid()) {
-                if (auto ite = find_position(); ite != timer()->__M_set.end()) {
+                if (auto ite = find_position(); ite != timer().__M_set.end()) {
                     assign_ec(task()->__M_ec, errc::operation_canceled);
                     // task()->__M_token(task());
                     // timer()->__M_set.erase(ite);
-                    timer()->__M_trash.emplace_back(
-                        std::move(timer()->__M_set.extract(ite).mapped()));
+                    timer().__M_trash.emplace_back(
+                        std::move(timer().__M_set.extract(ite).mapped()));
                 }
                 controller_->exclude();
             }
@@ -49,21 +43,21 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
 
         auto find_position() noexcept(true) {
             auto [begin, end] =
-                timer()->__M_set.equal_range(controller_->time_point);
+                timer().__M_set.equal_range(controller_->time_point);
             for (auto ite = begin; ite != end; ++ite) {
                 if (ite->second.get() == task()) {
                     return ite;
                 }
             }
-            return timer()->__M_set.end();
+            return timer().__M_set.end();
         }
 
         void update(
             const std::chrono::time_point<std::chrono::system_clock>& new_tp) {
             try {
-                auto node = timer()->__M_set.extract(find_position());
+                auto node = timer().__M_set.extract(find_position());
                 node.key() = new_tp;
-                timer()->__M_set.insert(std::move(node));
+                timer().__M_set.insert(std::move(node));
                 controller_->time_point = new_tp;
             } catch (...) {
                 release();
@@ -82,49 +76,45 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
     };
 
     template <typename Timer>
-    struct controller : io_context::task_t::custom_cancellation_base {
-        Timer* const timer;
+    struct controller : io_context::task_t::cancellation_controller_base,
+                        enable_weak_from_this<controller<Timer>> {
+        weak_ptr<Timer> timer;
         io_context::task_t* const task;
         std::chrono::time_point<std::chrono::system_clock> time_point;
 
         controller(Timer* t, io_context::task_t* t2,
                    const std::chrono::time_point<std::chrono::system_clock>& tp)
-            : timer(t), task(t2), time_point(tp) {}
+            : timer(t->weak_from_this()), task(t2), time_point(tp) {}
 
-        constexpr auto& tracker() noexcept(true) { return timer->__M_tracker; }
-        void exclude() {
-            for (auto ite = tracker().lower_bound(task);
-                 ite != tracker().end() && ite->first == task; ++ite) {
-                static_cast<fxd_tmr_cncl<Timer>*>(ite->second)->controller_ =
-                    nullptr;
-            }
-            tracker().erase(task);
-        }
+        constexpr void exclude() noexcept(true) { timer.release(); }
+        constexpr bool timer_valid() noexcept(true) { return !timer.expired(); }
 
-        ~controller() { exclude(); }
+        ~controller() {}
 
         void operator()(cancellation_signal& signal) override {
-            auto* p = new fxd_tmr_cncl<Timer>(this);
-            tracker().emplace(task, p);
-            signal.emplace(p);
+            if (timer_valid()) {
+                signal.emplace(new fxd_tmr_cncl<Timer>(this));
+            }
         }
 
         void cancel(io_context::task_t* t) override {
-            assert(t == task);
-            auto [begin, end] = timer->__M_set.equal_range(time_point);
-            auto pos = end;
-            for (auto ite = begin; ite != end; ++ite) {
-                if (ite->second.get() == task) {
-                    pos = ite;
+            if (timer_valid()) {
+                assert(t == task);
+                auto [begin, end] = timer->__M_set.equal_range(time_point);
+                auto pos = end;
+                for (auto ite = begin; ite != end; ++ite) {
+                    if (ite->second.get() == task) {
+                        pos = ite;
+                        break;
+                    }
                 }
+                if (pos != end) {
+                    assign_ec(task->__M_ec, errc::operation_canceled);
+                    timer->__M_trash.emplace_back(
+                        std::move(timer->__M_set.extract(pos).mapped()));
+                }
+                exclude();
             }
-            if (pos == end) {
-                return;
-            }
-            assign_ec(task->__M_ec, errc::operation_canceled);
-            timer->__M_trash.emplace_back(
-                std::move(timer->__M_set.extract(pos).mapped()));
-            exclude();
         }
     };
 };

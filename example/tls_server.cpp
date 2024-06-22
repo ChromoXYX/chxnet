@@ -1,5 +1,5 @@
-#include "../include/chx/net.hpp"
-#include "../include/chx/net/ssl/stream.hpp"
+#include <chx/net.hpp>
+#include <chx/net/ssl/ssl.hpp>
 #include <iostream>
 
 namespace net = chx::net;

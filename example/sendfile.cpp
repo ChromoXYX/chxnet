@@ -1,4 +1,4 @@
-#include "../include/chx/net.hpp"
+#include <chx/net.hpp>
 #include <iostream>
 
 namespace net = chx::net;

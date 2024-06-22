@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-#include "../include/chx/net.hpp"
+#include <chx/net.hpp>
 
 namespace net = chx::net;
 

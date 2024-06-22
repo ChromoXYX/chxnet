@@ -5,9 +5,9 @@
 #include "./cancellation.hpp"
 #include "./timeout.hpp"
 #include "./detail/flat_multimap.hpp"
+#include "./detail/tracker.hpp"
 
 #include <chrono>
-#include <map>
 
 namespace chx::net {
 namespace detail::tags {
@@ -19,7 +19,9 @@ namespace detail {
 constexpr std::chrono::time_point<std::chrono::system_clock> __zero_time_point;
 }
 
-template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
+template <typename Timer>
+class basic_fixed_timer
+    : public detail::enable_weak_from_this<basic_fixed_timer<Timer>> {
     template <typename T> friend struct detail::async_operation;
 
     detail::flat_multimap<std::chrono::time_point<std::chrono::system_clock>,
@@ -29,8 +31,6 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
 
     io_context* __M_ctx = nullptr;
     std::chrono::nanoseconds __M_interval;
-    detail::flat_multimap<io_context::task_t*, detail::cancellation_base*>
-        __M_tracker;
     Timer __M_timer;
     bool __M_clearing = false;
 
@@ -41,9 +41,6 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
 
   public:
     basic_fixed_timer(io_context& ctx) : __M_ctx(&ctx), __M_timer(ctx) {}
-    basic_fixed_timer(Timer&& timer)
-        : __M_ctx(&timer.get_associated_io_context()),
-          __M_timer(std::move(timer)) {}
     ~basic_fixed_timer() { __predestruct(); }
 
     constexpr io_context& get_associated_io_context() noexcept(true) {
@@ -91,15 +88,14 @@ template <typename Timer> class basic_fixed_timer : CHXNET_NONCOPYABLE {
 };
 using fixed_timer = basic_fixed_timer<ktimer>;
 
-class fixed_timeout_timer : CHXNET_NONCOPYABLE {
+class fixed_timeout_timer
+    : public detail::enable_weak_from_this<fixed_timeout_timer> {
     template <typename T> friend struct detail::async_operation;
     detail::flat_multimap<std::chrono::time_point<std::chrono::system_clock>,
                           std::unique_ptr<io_context::task_t>>
         __M_set;
     std::vector<std::unique_ptr<io_context::task_t>> __M_trash;
     io_context* __M_ctx;
-    detail::flat_multimap<io_context::task_t*, detail::cancellation_base*>
-        __M_tracker;
     std::chrono::nanoseconds __M_interval;
 
     cancellation_signal __M_signal;

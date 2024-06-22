@@ -1,5 +1,5 @@
 #include <iostream>
-#include "../include/chx/net.hpp"
+#include <chx/net.hpp>
 
 int main(void) {
     chx::net::io_context ctx;

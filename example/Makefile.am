@@ -1,7 +1,7 @@
-AM_CXXFLAGS = @__CHXNET_EXEC_CXXFLAGS@
+AM_CXXFLAGS = @__CHXNET_EXEC_CXXFLAGS@ -I../include
 bin_PROGRAMS = chxnet_echo chxnet_udp chxnet_ktimer \
     chxnet_coro chxnet_tls_server \
-    chxnet_sendfile chxnet_timer
+    chxnet_sendfile chxnet_timer chxnet_semaphore
 
 if CHXNET_WITH_LLHTTP
 bin_PROGRAMS += chxnet_http
@@ -23,3 +23,5 @@ chxnet_sendfile_SOURCES = sendfile.cpp
 chxnet_sendfile_LDADD = @__CHXNET_EXEC_LDADD@
 chxnet_timer_SOURCES = timer.cpp
 chxnet_timer_LDADD = @__CHXNET_EXEC_LDADD@
+chxnet_semaphore_SOURCES = semaphore.cpp
+chxnet_semaphore_LDADD = @__CHXNET_EXEC_LDADD@
