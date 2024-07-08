@@ -100,15 +100,25 @@ struct async_combine_impl
     // this should be the last fn call of this object.
     template <typename... Ts> decltype(auto) complete(Ts&&... ts) {
         if constexpr (!EnableReferenceCount::value) {
-            if (!__M_subtasks.empty()) {
-                __CHXNET_THROW(EINVAL);
+            assert(__M_subtasks.empty());
+            try {
+                CompletionToken::operator()(std::forward<Ts>(ts)...);
+            } catch (...) {
+                async_operation<tags::async_combine_persist>()(
+                    get_associated_task());
+                std::rethrow_exception(std::current_exception());
             }
-            CompletionToken::operator()(std::forward<Ts>(ts)...);
             async_operation<tags::async_combine_persist>()(
                 get_associated_task());
         } else {
             if (tracked_task_empty()) {
-                CompletionToken::operator()(std::forward<Ts>(ts)...);
+                try {
+                    CompletionToken::operator()(std::forward<Ts>(ts)...);
+                } catch (...) {
+                    async_operation<tags::async_combine_persist>()(
+                        get_associated_task());
+                    std::rethrow_exception(std::current_exception());
+                }
                 async_operation<tags::async_combine_persist>()(
                     get_associated_task());
             }

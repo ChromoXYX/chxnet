@@ -373,7 +373,7 @@ class io_context : CHXNET_NONCOPYABLE {
     template <typename CompletionToken>
     decltype(auto) async_nop(CompletionToken&& completion_token);
 
-    constexpr std::size_t outstanding_tasks() const noexcept(true) {
+    std::size_t outstanding_tasks() const noexcept(true) {
         return __M_dynamic_task_queue.size() - __M_avail_set.size();
     }
 };
