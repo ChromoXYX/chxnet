@@ -5,8 +5,8 @@
 
 #include <memory>
 #include <vector>
-#include <set>
 
+#include "./detail/task_declare.hpp"
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
 #include "./detail/flat_set.hpp"
@@ -23,6 +23,8 @@
 #endif
 
 namespace chx::net {
+class io_context;
+
 class bad_io_uring_init : public exception {
   public:
     using exception::exception;
@@ -39,81 +41,81 @@ template <typename Tag> struct async_operation;
 namespace tags {
 struct use_delivery {};
 }  // namespace tags
+
+struct task_declare::task_decl : CHXNET_NONCOPYABLE {
+    struct cancellation_controller_base {
+        virtual void operator()(cancellation_signal&) = 0;
+        virtual void cancel(task_decl*) = 0;
+        virtual ~cancellation_controller_base() = default;
+    };
+
+    task_decl(io_context* p) noexcept(true) : __M_ctx(p) {}
+
+    io_context* __M_ctx = nullptr;
+
+    std::uint64_t __M_additional = {};
+
+    bool __M_avail = true;
+    bool __M_persist = false;
+    bool __M_notif = false;
+    bool __M_cancel_invoke = false;
+    bool __M_option5 = false;
+    bool __M_option6 = false;
+    bool __M_option7 = false;
+    std::size_t __M_dyn_idx = 0;
+    constexpr static std::size_t __END = -1;
+
+    std::error_code __M_ec;
+    int __M_res;
+
+    std::unique_ptr<cancellation_controller_base> __M_custom_cancellation;
+
+    detail::basic_token_storage<int(task_decl*), CHXNET_TOKEN_STORAGE_SIZE>
+        __M_token;
+
+    void reset() noexcept(true) {
+        // __M_token.clear();
+        __M_ec.clear();
+        __M_res = 0;
+        __M_persist = false;
+        __M_notif = false;
+        __M_cancel_invoke = false;
+    }
+
+    constexpr io_context& get_associated_io_context() noexcept(true) {
+        return *__M_ctx;
+    }
+    void* get_underlying_data() noexcept(true) {
+        return __M_token.underlying_data();
+    }
+};
 }  // namespace detail
 
 class io_context : CHXNET_NONCOPYABLE {
     template <typename Tag> friend struct detail::async_operation;
-
-  protected:
-    io_uring __M_ring;
-    bool __M_stopped = false;
-    // bool __M_destructing = false;
-
-    struct __task_t : CHXNET_NONCOPYABLE {
-        struct cancellation_controller_base {
-            virtual void operator()(cancellation_signal&) = 0;
-            virtual void cancel(io_context::__task_t*) = 0;
-            virtual ~cancellation_controller_base() = default;
-        };
-
-        __task_t(io_context* p) noexcept(true) : __M_ctx(p) {}
-
-        io_context* __M_ctx = nullptr;
-
-        std::uint64_t __M_additional = {};
-
-        bool __M_avail = true;
-        bool __M_persist = false;
-        bool __M_notif = false;
-        bool __M_cancel_invoke = false;
-        bool __M_option5 = false;
-        bool __M_option6 = false;
-        bool __M_option7 = false;
-        std::size_t __M_dyn_idx = 0;
-        constexpr static std::size_t __END = -1;
-
-        std::error_code __M_ec;
-        int __M_res;
-
-        std::unique_ptr<cancellation_controller_base> __M_custom_cancellation;
-
-        detail::basic_token_storage<int(__task_t*), CHXNET_TOKEN_STORAGE_SIZE>
-            __M_token;
-
-        void reset() noexcept(true) {
-            // __M_token.clear();
-            __M_ec.clear();
-            __M_res = 0;
-            __M_persist = false;
-            __M_notif = false;
-            __M_cancel_invoke = false;
-        }
-
-        constexpr io_context& get_associated_io_context() noexcept(true) {
-            return *__M_ctx;
-        }
-        void* get_underlying_data() noexcept(true) {
-            return __M_token.underlying_data();
-        }
-    };
-
-    std::vector<std::unique_ptr<__task_t>> __M_dynamic_task_queue;
-    std::size_t __M_dyn_end = 0;
-
-    static_assert(
-        std::is_nothrow_destructible_v<__task_t> &&
-        std::is_nothrow_destructible_v<decltype(__M_dynamic_task_queue)>);
 
   public:
     /**
      * @brief Type which carries necessary data for a single async task.
      *
      */
-    using task_t = __task_t;
+    using task_t = detail::task_declare::task_decl;
+
+  protected:
+    io_uring __M_ring;
+    bool __M_stopped = false;
+    // bool __M_destructing = false;
+
+    std::vector<std::unique_ptr<task_t>> __M_dynamic_task_queue;
+    std::size_t __M_dyn_end = 0;
+
+    static_assert(
+        std::is_nothrow_destructible_v<task_t> &&
+        std::is_nothrow_destructible_v<decltype(__M_dynamic_task_queue)>);
 
   protected:
     detail::flat_set<std::size_t> __M_avail_set;
-    __task_t* acquire() {
+    task_t* acquire() {
         if (!__M_avail_set.empty()) {
             auto ite = __M_avail_set.end() - 1;
             auto* p = __M_dynamic_task_queue[*ite].get();
@@ -122,7 +124,7 @@ class io_context : CHXNET_NONCOPYABLE {
             return p;
             __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
         } else {
-            __M_dynamic_task_queue.emplace_back(new __task_t(this));
+            __M_dynamic_task_queue.emplace_back(new task_t(this));
 
             __M_dyn_end = __M_dynamic_task_queue.size() - 1;
 
@@ -133,7 +135,7 @@ class io_context : CHXNET_NONCOPYABLE {
         }
     }
 
-    void release(__task_t* task) noexcept(true) {
+    void release(task_t* task) noexcept(true) {
         if (task->__M_dyn_idx != task->__END) {
             if (outstanding_tasks() == 1) {
                 __M_dyn_end = 0;
@@ -162,7 +164,7 @@ class io_context : CHXNET_NONCOPYABLE {
         }
     }
 
-    [[nodiscard]] io_uring_sqe* get_sqe(__task_t* task = nullptr) {
+    [[nodiscard]] io_uring_sqe* get_sqe(task_t* task = nullptr) {
         auto* sqe = io_uring_get_sqe(&__M_ring);
         if (sqe) {
             io_uring_sqe_set_data(sqe, task);
@@ -180,7 +182,7 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     [[nodiscard]] io_uring_sqe*
-    try_get_sqe(__task_t* task = nullptr) noexcept(true) {
+    try_get_sqe(task_t* task = nullptr) noexcept(true) {
         auto* sqe = io_uring_get_sqe(&__M_ring);
         if (sqe) {
             io_uring_sqe_set_data(sqe, task);
@@ -188,17 +190,17 @@ class io_context : CHXNET_NONCOPYABLE {
         return sqe;
     }
 
-    [[nodiscard]] std::pair<io_uring_sqe*, __task_t*> get() {
-        std::pair<io_uring_sqe*, __task_t*> _r{get_sqe(), acquire()};
+    [[nodiscard]] std::pair<io_uring_sqe*, task_t*> get() {
+        std::pair<io_uring_sqe*, task_t*> _r{get_sqe(), acquire()};
         io_uring_sqe_set_data(_r.first, _r.second);
         return _r;
     }
-    void get(io_uring_sqe** sqe, __task_t** task) {
+    void get(io_uring_sqe** sqe, task_t** task) {
         *sqe = get_sqe();
         *task = acquire();
         io_uring_sqe_set_data(*sqe, *task);
     }
-    void cancel_task(__task_t* task, int flags = 0) {
+    void cancel_task(task_t* task, int flags = 0) {
         auto* sqe = get_sqe();
         io_uring_prep_cancel(sqe, task, flags);
         sqe->flags = IOSQE_CQE_SKIP_SUCCESS;
@@ -235,7 +237,7 @@ class io_context : CHXNET_NONCOPYABLE {
                 ++nr;
                 if (cqe->user_data) {
                     auto* task =
-                        static_cast<__task_t*>(io_uring_cqe_get_data(cqe));
+                        static_cast<task_t*>(io_uring_cqe_get_data(cqe));
 
                     if (task->__M_notif && task->__M_persist) {
                         // if task is aware of notif
@@ -295,7 +297,7 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
   public:
-    io_context(std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(__task_t))
+    io_context(std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(task_t))
     /*: __M_static_task_sz(static_task_sz)*/ {
         // __M_mt_closed.test_and_set(std::memory_order_acquire);
 

@@ -1,7 +1,13 @@
 #pragma once
 
+/*
+provide reference count for variables that not allocated on heap individually
+so owner_guard and enable_weak_from_this is noncopyable
+*/
+
 #include <cassert>
 #include <cstddef>
+#include <cstdio>
 
 #include "./noncopyable.hpp"
 
@@ -14,7 +20,7 @@ struct counter_block {
         constexpr __guard_base(const __guard_base& other) noexcept(true)
             : block(other.block) {
             if (block) {
-                block->*IncFn();
+                (block->*IncFn)();
             }
         }
         constexpr __guard_base(__guard_base&& other) noexcept(true) {
@@ -65,10 +71,11 @@ struct counter_block {
     }
 
     struct owner_guard
-        : __guard_base<&counter_block::owner_inc, &counter_block::owner_exit> {
-        friend owner_guard make_owner();
-
+        : CHXNET_NONCOPYABLE,
+          __guard_base<&counter_block::owner_inc, &counter_block::owner_exit> {
         using __guard_base::__guard_base;
+
+        template <typename Object> friend struct enable_weak_from_this;
     };
     struct weak_guard
         : __guard_base<&counter_block::weak_inc, &counter_block::weak_exit> {
@@ -122,10 +129,8 @@ template <typename Object> class weak_ptr {
         : __M_ptr(obj), __M_guard(owner) {}
 };
 
-inline owner_guard make_owner() { return new counter_block; }
-
 template <typename Object> struct enable_weak_from_this : CHXNET_NONCOPYABLE {
-    enable_weak_from_this() : owner(make_owner()) {}
+    enable_weak_from_this() : owner(new counter_block) {}
 
     constexpr weak_ptr<Object> weak_from_this() noexcept(true) {
         return weak_ptr(static_cast<Object*>(this), owner);

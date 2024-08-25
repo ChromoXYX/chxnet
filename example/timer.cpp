@@ -1,6 +1,7 @@
 #include <chx/net.hpp>
 #include <iostream>
 #include <functional>
+#include <chx/net/coroutine2.hpp>
 
 namespace net = chx::net;
 

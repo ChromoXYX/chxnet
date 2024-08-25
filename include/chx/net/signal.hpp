@@ -75,19 +75,7 @@ class signal : CHXNET_NONCOPYABLE {
     constexpr int native_handler() const noexcept(true) {
         return __M_fd.native_handler();
     }
-    void close(std::error_code& e) noexcept(true) {
-        e.clear();
-        if (__M_fd.close() != 0) {
-            detail::assign_ec(e, errno);
-        }
-    }
-    void close() {
-        std::error_code e;
-        close(e);
-        if (e) {
-            __CHXNET_THROW_EC(e);
-        }
-    }
+    void close() noexcept(true) { __M_fd.close(); }
 
     void add(int sig, std::error_code& e) noexcept(true) {
         e.clear();

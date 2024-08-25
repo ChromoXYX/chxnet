@@ -1,7 +1,6 @@
-#define CHXNET_ENABLE_CORO_WHEN_ANY 1
-
 #include <iostream>
 #include <chx/net.hpp>
+#include <chx/net/coroutine2.hpp>
 
 namespace net = chx::net;
 

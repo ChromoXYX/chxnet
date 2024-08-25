@@ -50,11 +50,13 @@ template <> struct async_operation<tags::write_seq_exactly> {
         void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
             if (!e && s) {
                 if (transferred + s < total_size) {
+                    transferred += s;
                     while (s >= flat_sequence.front().iov_len) {
                         s -= flat_sequence.front().iov_len;
                         flat_sequence.erase(flat_sequence.begin());
                     }
-                    transferred += s;
+                    assert(!flat_sequence.empty() &&
+                           flat_sequence.front().iov_len > s);
                     flat_sequence.front().iov_len -= s;
                     async_write_seq3(stream, flat_sequence, cntl.next());
                 } else {

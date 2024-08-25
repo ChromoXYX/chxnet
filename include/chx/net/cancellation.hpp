@@ -43,6 +43,7 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
     void emit() {
         if (__M_op) {
             (*__M_op)();
+            clear();
         }
     }
 

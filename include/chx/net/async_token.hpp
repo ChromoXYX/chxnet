@@ -1,7 +1,7 @@
 #pragma once
 
-#include "./io_context.hpp"
 #include "./attribute.hpp"
+#include "./detail/task_declare.hpp"
 
 #include <cassert>
 
@@ -32,7 +32,8 @@ async_token_bind(CompletionToken&& token) noexcept(true) {
 
 template <typename FinalFunctor, typename CompletionToken>
 constexpr decltype(auto)
-async_token_generate(io_context::task_t* task, FinalFunctor&& final_functor,
+async_token_generate(task_declare::task_decl* task,
+                     FinalFunctor&& final_functor,
                      CompletionToken&& token) noexcept(true) {
     assert(task);
     if constexpr (is_async_token<std::decay_t<CompletionToken>>::value) {
@@ -44,7 +45,7 @@ async_token_generate(io_context::task_t* task, FinalFunctor&& final_functor,
         // lifetime for the completion_token.
         return [final_functor = std::move(final_functor),
                 token = std::move(token)](
-                   io_context::task_t* t) mutable -> decltype(auto) {
+                   task_declare::task_decl* t) mutable -> decltype(auto) {
             return final_functor(token, t);
         };
     }
@@ -63,8 +64,9 @@ async_token_init(TypeIdentity, CompletionToken&& token) noexcept(true) {
 template <int Id> struct fake_final_functor {
     // ONLY return LVALUE reference
     template <typename GeneratedToken>
-    constexpr GeneratedToken& operator()(GeneratedToken& generated_token,
-                                         io_context::task_t*) noexcept(true) {
+    constexpr GeneratedToken&
+    operator()(GeneratedToken& generated_token,
+               task_declare::task_decl*) noexcept(true) {
         return generated_token;
     }
 };

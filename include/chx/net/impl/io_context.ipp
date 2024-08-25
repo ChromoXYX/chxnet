@@ -18,7 +18,7 @@ template <typename FinalFunctor, typename CompletionToken>
 decltype(auto)
 chx::net::detail::async_operation<chx::net::detail::tags::delivery>::operator()(
     io_context* ctx, FinalFunctor&& final_functor, CompletionToken&& token) {
-    io_context::__task_t* task = ctx->acquire();
+    io_context::task_t* task = ctx->acquire();
     auto* sqe = ctx->get_sqe(task);
     io_uring_prep_nop(sqe);
 

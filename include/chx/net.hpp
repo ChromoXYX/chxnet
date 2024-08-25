@@ -1,9 +1,5 @@
 #pragma once
 
-#if __cplusplus >= 202002L
-#define CHXNET_ENABLE_COROUTINE 1
-#endif
-
 #include "./net/attribute.hpp"
 #include "./net/async_write_some_exactly.hpp"
 #include "./net/file_descriptor.hpp"
@@ -29,7 +25,6 @@
 #include "./net/error_code.hpp"
 #include "./net/basic_fixed_timer.hpp"
 #include "./net/ip.hpp"
-#include "./net/coroutine2.hpp"
 #include "./net/buffer.hpp"
 #include "./net/io_context.hpp"
 #include "./net/async_read.hpp"
@@ -44,6 +39,8 @@
 #include "./net/detail/flat_set.hpp"
 #include "./net/detail/flat_multimap.hpp"
 #include "./net/detail/basic_token_storage.hpp"
+#include "./net/detail/task_declare.hpp"
 #include "./net/detail/tracker.hpp"
+#include "./net/detail/remove_rvalue_reference.hpp"
 #include "./net/detail/noncopyable.hpp"
 #include "./net/detail/sfinae_placeholder.hpp"

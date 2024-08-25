@@ -1,11 +1,5 @@
 #pragma once
 
-#ifdef CHXNET_ENABLE_COROUTINE
-
-// #ifndef CHXNET_ENABLE_CORO_WHEN_ANY
-// #define CHXNET_ENABLE_CORO_WHEN_ANY 0
-// #endif
-
 #include "attribute.hpp"
 
 #include <coroutine>
@@ -35,7 +29,7 @@ inline void deliver_exception(io_context* ctx, std::exception_ptr ex) {
         [ex](const std::error_code& ec) { std::rethrow_exception(ex); });
 }
 
-class task_impl {
+class task_impl : CHXNET_NONCOPYABLE {
     struct promise {
         ~promise() {
             if (__M_then)
@@ -137,7 +131,7 @@ template <> struct nop_future_impl<void> {
     }
 };
 
-template <typename T> struct future_impl {
+template <typename T> struct future_impl : CHXNET_NONCOPYABLE {
     ~future_impl() {
         if (h) {
             // h.promise().disconnect();
@@ -159,8 +153,8 @@ template <typename T> struct future_impl {
         }
         auto final_suspend() noexcept(true);
         future_impl get_return_object() {
-            return {std::coroutine_handle<promise_type>::from_promise(
-                static_cast<promise_type&>(*this))};
+            return std::coroutine_handle<promise_type>::from_promise(
+                static_cast<promise_type&>(*this));
         }
 
         void disconnect() noexcept(true);
@@ -207,6 +201,11 @@ template <typename T> struct future_impl {
     std::coroutine_handle<promise_type> h;
 
     auto operator co_await();
+
+    constexpr future_impl(std::coroutine_handle<promise_type> h_) noexcept(true)
+        : h(h_) {}
+    constexpr future_impl(future_impl&& other) noexcept(true)
+        : h(std::exchange(other.h, nullptr)) {}
 };
 
 template <> struct future_impl<void>::awaitable : awaitable_base {
@@ -779,5 +778,3 @@ decltype(auto) when_any(Awaitables&&... awaitables) {
         std::forward<Awaitables>(awaitables)...);
 }
 }  // namespace chx::net
-
-#endif

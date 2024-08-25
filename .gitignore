@@ -101,6 +101,8 @@ perf.*
 **/aclocal.m4
 pkgconfig/chxnet.pc
 
+.utils/
+
 test/*
 !test/*.cpp
 !test/Makefile.am

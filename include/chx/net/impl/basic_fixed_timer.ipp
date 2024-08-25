@@ -73,6 +73,10 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
                 update({});
             }
         }
+
+        constexpr auto time_point() noexcept(true) {
+            return controller_->time_point;
+        }
     };
 
     template <typename Timer>
