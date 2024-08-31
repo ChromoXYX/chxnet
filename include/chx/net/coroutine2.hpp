@@ -327,7 +327,7 @@ struct awaitable_then_base {
     virtual ~awaitable_then_base() = default;
 };
 
-template <typename T> struct awaitable_impl : CHXNET_NONCOPYABLE {
+template <typename T> struct [[nodiscard]] awaitable_impl : CHXNET_NONCOPYABLE {
     using value_type = T;
 
     struct view : CHXNET_NONCOPYABLE {

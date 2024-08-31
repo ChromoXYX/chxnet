@@ -30,6 +30,12 @@ template <> struct async_operation<tags::async_combine_use_delivery> {
     }
 };
 
+struct has_unhandled_exception_impl {
+    template <typename T, typename Cntl,
+              typename = decltype(std::declval<T>().unhandled_exception(
+                  std::declval<Cntl&>(), std::declval<std::exception_ptr>()))>
+    has_unhandled_exception_impl(T, Cntl&);
+};
 template <typename Operation, typename CompletionToken,
           typename EnableReferenceCount = std::false_type>
 struct async_combine_impl
@@ -40,6 +46,10 @@ struct async_combine_impl
     using attribute_type = attribute<async_token>;
     using rebind_operation =
         typename Operation::template rebind<async_combine_impl>;
+    template <typename T>
+    using has_unhandled_exception =
+        std::is_constructible<has_unhandled_exception_impl, T,
+                              async_combine_impl&>;
 
     io_context::task_t* const __M_associated_task;
     std::vector<io_context::task_t*> __M_subtasks;
@@ -101,24 +111,12 @@ struct async_combine_impl
     template <typename... Ts> decltype(auto) complete(Ts&&... ts) {
         if constexpr (!EnableReferenceCount::value) {
             assert(__M_subtasks.empty());
-            try {
-                CompletionToken::operator()(std::forward<Ts>(ts)...);
-            } catch (...) {
-                async_operation<tags::async_combine_persist>()(
-                    get_associated_task());
-                std::rethrow_exception(std::current_exception());
-            }
+            CompletionToken::operator()(std::forward<Ts>(ts)...);
             async_operation<tags::async_combine_persist>()(
                 get_associated_task());
         } else {
             if (tracked_task_empty()) {
-                try {
-                    CompletionToken::operator()(std::forward<Ts>(ts)...);
-                } catch (...) {
-                    async_operation<tags::async_combine_persist>()(
-                        get_associated_task());
-                    std::rethrow_exception(std::current_exception());
-                }
+                CompletionToken::operator()(std::forward<Ts>(ts)...);
                 async_operation<tags::async_combine_persist>()(
                     get_associated_task());
             }
@@ -137,7 +135,14 @@ struct async_combine_impl
     }
 
     template <typename... Ts> decltype(auto) direct_invoke(Ts&&... ts) {
-        return rebind_operation::operator()(*this, std::forward<Ts>(ts)...);
+        try {
+            return rebind_operation::operator()(*this, std::forward<Ts>(ts)...);
+        } catch (...) {
+            if constexpr (has_unhandled_exception<rebind_operation>::value) {
+                return rebind_operation::unhandled_exception(
+                    *this, std::current_exception());
+            }
+        }
     }
 
     struct next_guard : CHXNET_NONCOPYABLE {
