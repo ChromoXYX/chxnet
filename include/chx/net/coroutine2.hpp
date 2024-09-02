@@ -95,7 +95,7 @@ class task_impl : CHXNET_NONCOPYABLE {
         return *this;
     }
 
-    void resume() const { __M_h.resume(); }
+    void resume() const noexcept(true) { __M_h.resume(); }
     void release() { __M_h = nullptr; }
     bool done() const noexcept(true) { return __M_h.done(); }
     promise_type& promise() noexcept(true) { return __M_h.promise(); }

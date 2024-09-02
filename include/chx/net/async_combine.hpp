@@ -141,6 +141,9 @@ struct async_combine_impl
             if constexpr (has_unhandled_exception<rebind_operation>::value) {
                 return rebind_operation::unhandled_exception(
                     *this, std::current_exception());
+            } else {
+                assert(false && "async_combine operation shouldn't throw "
+                                "without unhandled_exception()");
             }
         }
     }
