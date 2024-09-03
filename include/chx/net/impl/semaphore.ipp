@@ -13,12 +13,13 @@ template <typename Action> struct task_queue_cncl_cntl {};
 }  // namespace tags
 
 template <> struct async_operation<tags::task_queue_tag> {
+    template <typename Resource>
     struct cncl_cntl : io_context::task_t::cancellation_controller_base,
-                       enable_weak_from_this<cncl_cntl> {
-        cncl_cntl(semaphore* q, io_context::task_t* t) noexcept(true)
+                       enable_weak_from_this<cncl_cntl<Resource>> {
+        cncl_cntl(semaphore<Resource>* q, io_context::task_t* t) noexcept(true)
             : queue(q->weak_from_this()), task(t) {}
 
-        weak_ptr<semaphore> queue;
+        weak_ptr<semaphore<Resource>> queue;
         io_context::task_t* const task;
 
         void cancel(io_context::task_t* t) override {
@@ -30,7 +31,6 @@ template <> struct async_operation<tags::task_queue_tag> {
                         return ptr.get() == task;
                     });
                 if (ite != queue->__M_queue.end()) {
-                    assign_ec(task->__M_ec, errc::operation_canceled);
                     queue->__M_trash.emplace_back(std::move(*ite));
                     queue->__M_queue.erase(ite);
                     async_flush();
@@ -74,6 +74,7 @@ template <> struct async_operation<tags::task_queue_tag> {
                         std::vector<std::unique_ptr<io_context::task_t>> trash =
                             std::move(guard->__M_trash);
                         for (auto& ptr : trash) {
+                            assign_ec(ptr->__M_ec, errc::operation_canceled);
                             ptr->__M_token(ptr.get());
                         }
                     }
@@ -82,8 +83,8 @@ template <> struct async_operation<tags::task_queue_tag> {
         }
     };
 
-    template <typename BindCompletionToken>
-    decltype(auto) push(semaphore* self,
+    template <typename Resource, typename BindCompletionToken>
+    decltype(auto) push(semaphore<Resource>* self,
                         BindCompletionToken&& bind_completion_token) {
         io_context::task_t* task =
             self->__M_queue
@@ -96,7 +97,11 @@ template <> struct async_operation<tags::task_queue_tag> {
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* task) {
-                    token(task->__M_ec);
+                    token(task->__M_ec,
+                          !task->__M_ec
+                              ? std::move(*reinterpret_cast<Resource*>(
+                                    task->__M_additional))
+                              : nullptr);
                     return 0;
                 },
                 std::forward<BindCompletionToken>(bind_completion_token))),
@@ -105,10 +110,11 @@ template <> struct async_operation<tags::task_queue_tag> {
 };
 }  // namespace chx::net::detail
 
+template <typename Resource>
 template <typename CompletionToken>
-decltype(auto)
-chx::net::semaphore::async_acquire(CompletionToken&& completion_token) {
+decltype(auto) chx::net::semaphore<Resource>::async_acquire(
+    CompletionToken&& completion_token) {
     return detail::async_operation<detail::tags::task_queue_tag>().push(
-        this, detail::async_token_bind<const std::error_code&>(
+        this, detail::async_token_bind<const std::error_code&, Resource&&>(
                   std::forward<CompletionToken>(completion_token)));
 }

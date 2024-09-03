@@ -5,7 +5,8 @@
 #include <vector>
 
 namespace chx::net {
-class semaphore : public detail::enable_weak_from_this<semaphore> {
+template <typename ResourcePtr>
+class semaphore : public detail::enable_weak_from_this<semaphore<ResourcePtr>> {
     template <typename Tag> friend struct detail::async_operation;
     io_context* __M_ctx = nullptr;
 
@@ -23,18 +24,32 @@ class semaphore : public detail::enable_weak_from_this<semaphore> {
     decltype(auto) async_acquire(CompletionToken&& completion_token);
 
     constexpr bool empty() noexcept(true) { return __M_queue.empty(); }
-    void release() {
-        std::unique_ptr task = std::move(__M_queue.front());
-        __M_queue.erase(__M_queue.begin());
-        get_associated_io_context().async_nop(
-            [task = std::move(task)](const std::error_code& e) {
-                task->__M_token(task.get());
-            });
+    template <typename Resource> bool release(Resource&& resource) {
+        if (!__M_queue.empty()) {
+            std::unique_ptr task = std::move(__M_queue.front());
+            __M_queue.erase(__M_queue.begin());
+            get_associated_io_context().async_nop(
+                [task = std::move(task),
+                 res = std::move(resource)](const std::error_code& e) {
+                    task->__M_additional =
+                        reinterpret_cast<std::uint64_t>(&res);
+                    task->__M_token(task.get());
+                });
+            return true;
+        } else {
+            return false;
+        }
     }
-    void inplace_release() {
-        std::unique_ptr task = std::move(__M_queue.front());
-        __M_queue.erase(__M_queue.begin());
-        task->__M_token(task.get());
+    template <typename Resource> bool inplace_release(Resource&& resource) {
+        if (!__M_queue.empty()) {
+            std::unique_ptr task = std::move(__M_queue.front());
+            __M_queue.erase(__M_queue.begin());
+            task->__M_additional = reinterpret_cast<std::uint64_t>(&resource);
+            task->__M_token(task.get());
+            return true;
+        } else {
+            return false;
+        }
     }
 };
 }  // namespace chx::net

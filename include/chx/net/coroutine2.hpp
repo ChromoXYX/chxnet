@@ -228,20 +228,7 @@ template <typename T> struct future_impl<T>::awaitable : awaitable_base {
 
     std::variant<std::monostate, T, std::exception_ptr> value;
 
-    T& await_resume() & {
-        switch (value.index()) {
-        case 1: {
-            return std::get<1>(value);
-        }
-        case 2: {
-            std::rethrow_exception(std::get<2>(value));
-        }
-        default: {
-            __CHXNET_THROW(EINVAL);
-        }
-        }
-    }
-    T&& await_resume() && {
+    T await_resume() {
         switch (value.index()) {
         case 1: {
             return std::move(std::get<1>(value));
