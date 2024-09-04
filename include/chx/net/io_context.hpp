@@ -5,6 +5,8 @@
 
 #include <memory>
 #include <vector>
+#include <queue>
+#include <list>
 
 #include "./detail/task_declare.hpp"
 #include "./detail/basic_token_storage.hpp"
@@ -62,8 +64,10 @@ struct task_declare::task_decl : CHXNET_NONCOPYABLE {
     bool __M_option5 = false;
     bool __M_option6 = false;
     bool __M_option7 = false;
-    std::size_t __M_dyn_idx = 0;
-    constexpr static std::size_t __END = -1;
+    // std::size_t __M_dyn_idx = 0;
+    // constexpr static std::size_t __END = -1;
+    std::list<std::unique_ptr<task_decl>>::iterator __M_location;
+    static_assert(sizeof(__M_location) == sizeof(std::size_t));
 
     std::error_code __M_ec;
     int __M_res;
@@ -74,12 +78,13 @@ struct task_declare::task_decl : CHXNET_NONCOPYABLE {
         __M_token;
 
     void reset() noexcept(true) {
-        // __M_token.clear();
         __M_ec.clear();
         __M_res = 0;
         __M_persist = false;
         __M_notif = false;
         __M_cancel_invoke = false;
+
+        __M_custom_cancellation.reset();
     }
 
     constexpr io_context& get_associated_io_context() noexcept(true) {
@@ -106,61 +111,37 @@ class io_context : CHXNET_NONCOPYABLE {
     bool __M_stopped = false;
     // bool __M_destructing = false;
 
-    std::vector<std::unique_ptr<task_t>> __M_dynamic_task_queue;
-    std::size_t __M_dyn_end = 0;
+    // std::vector<std::unique_ptr<task_t>> __M_dynamic_task_queue;
+    std::queue<std::unique_ptr<task_t>> __M_task_pool;
+    std::list<std::unique_ptr<task_t>> __M_outstanding_task_list;
 
     static_assert(
         std::is_nothrow_destructible_v<task_t> &&
-        std::is_nothrow_destructible_v<decltype(__M_dynamic_task_queue)>);
+        std::is_nothrow_destructible_v<decltype(__M_outstanding_task_list)>);
 
   protected:
-    detail::flat_set<std::size_t> __M_avail_set;
+    // detail::flat_set<std::size_t> __M_avail_set;
     task_t* acquire() {
-        if (!__M_avail_set.empty()) {
-            auto ite = __M_avail_set.end() - 1;
-            auto* p = __M_dynamic_task_queue[*ite].get();
-            __M_avail_set.erase(ite);
-            p->__M_avail = false;
-            return p;
-            __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
+        task_t* r = nullptr;
+        if (!__M_task_pool.empty()) {
+            std::unique_ptr ptr = std::move(__M_task_pool.front());
+            __M_task_pool.pop();
+            r = __M_outstanding_task_list.emplace_front(std::move(ptr)).get();
+            r->reset();
         } else {
-            __M_dynamic_task_queue.emplace_back(new task_t(this));
-
-            __M_dyn_end = __M_dynamic_task_queue.size() - 1;
-
-            auto* p = __M_dynamic_task_queue.back().get();
-            p->__M_avail = false;
-            p->__M_dyn_idx = __M_dyn_end;
-            return p;
+            r = __M_outstanding_task_list.emplace_front(new task_t(this)).get();
         }
+        r->__M_avail = false;
+        r->__M_location = __M_outstanding_task_list.begin();
+        return r;
     }
 
     void release(task_t* task) noexcept(true) {
-        if (task->__M_dyn_idx != task->__END) {
-            if (outstanding_tasks() == 1) {
-                __M_dyn_end = 0;
-                __M_dynamic_task_queue.clear();
-                __M_avail_set.clear();
-                return;
-            }
-            task->__M_avail = true;
-            if (task->__M_dyn_idx == __M_dyn_end) {
-                std::size_t idx = __M_dyn_end - 1;
-                for (; idx; --idx) {
-                    if (!__M_dynamic_task_queue[idx]->__M_avail) {
-                        break;
-                    }
-                }
-                __M_dyn_end = idx;
-                __M_dynamic_task_queue.erase(__M_dynamic_task_queue.begin() +
-                                                 idx + 1,
-                                             __M_dynamic_task_queue.end());
-                __M_avail_set.erase(__M_avail_set.lower_bound(idx + 1),
-                                    __M_avail_set.end());
-            } else {
-                assert(__M_avail_set.insert(task->__M_dyn_idx).second);
-                task->reset();
-            }
+        auto loc = task->__M_location;
+        std::unique_ptr ptr = std::move(*loc);
+        __M_outstanding_task_list.erase(loc);
+        if (__M_task_pool.size() < 256) {
+            __M_task_pool.push(std::move(ptr));
         }
     }
 
@@ -236,6 +217,7 @@ class io_context : CHXNET_NONCOPYABLE {
             io_uring_for_each_cqe(&__M_ring, head, cqe) {
                 ++nr;
                 if (cqe->user_data) {
+                    assert(!(cqe->flags & IORING_CQE_F_NOTIF));
                     auto* task =
                         static_cast<task_t*>(io_uring_cqe_get_data(cqe));
 
@@ -282,7 +264,7 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     void __async_cancel_all() {
-        for (auto& ptr : __M_dynamic_task_queue) {
+        for (auto& ptr : __M_outstanding_task_list) {
             auto* sqe = get_sqe();
             io_uring_prep_cancel(sqe, ptr.get(), IORING_ASYNC_CANCEL_ALL);
         }
@@ -376,7 +358,7 @@ class io_context : CHXNET_NONCOPYABLE {
     decltype(auto) async_nop(CompletionToken&& completion_token);
 
     std::size_t outstanding_tasks() const noexcept(true) {
-        return __M_dynamic_task_queue.size() - __M_avail_set.size();
+        return __M_outstanding_task_list.size();
     }
 };
 }  // namespace chx::net
