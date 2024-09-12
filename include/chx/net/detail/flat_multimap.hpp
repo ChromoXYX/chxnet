@@ -5,7 +5,26 @@
 #include <optional>
 
 namespace chx::net::detail {
-template <typename Key, typename Value> class flat_multimap {
+template <typename ValueType, typename Compare>
+struct key_compare_impl : Compare {
+    template <typename K>
+    constexpr bool operator()(const K& k, const ValueType& v) const
+        noexcept(true) {
+        return Compare::operator()(k, v.first);
+    }
+    template <typename K>
+    constexpr bool operator()(const ValueType& v, const K& k) const
+        noexcept(true) {
+        return Compare::operator()(v.first, k);
+    }
+};
+
+template <typename Key, typename Value, typename Compare = std::less<Key>>
+class flat_multimap
+    : protected key_compare_impl<std::pair<Key, Value>, Compare> {
+  private:
+    using cmp_type = key_compare_impl<std::pair<Key, Value>, Compare>;
+
   public:
     using key_type = Key;
     using mapped_type = Value;
@@ -17,16 +36,7 @@ template <typename Key, typename Value> class flat_multimap {
     using const_reference = typename container_type::const_reference;
     using size_type = typename container_type::size_type;
 
-    template <typename K> struct key_compare {
-        constexpr bool operator()(const K& k, const value_type& v) const
-            noexcept(true) {
-            return k < v.first;
-        }
-        constexpr bool operator()(const value_type& v, const K& k) const
-            noexcept(true) {
-            return v.first < k;
-        }
-    };
+    using key_compare = Compare;
 
     struct node_type {
         friend class flat_multimap;
@@ -50,24 +60,24 @@ template <typename Key, typename Value> class flat_multimap {
     };
 
     template <typename K> iterator lower_bound(const K& k) noexcept(true) {
-        return std::lower_bound(c.begin(), c.end(), k, key_compare<K>{});
+        return std::lower_bound(c.begin(), c.end(), k, cmp());
     }
     template <typename K>
     const_iterator lower_bound(const K& k) const noexcept(true) {
-        return std::lower_bound(c.begin(), c.end(), k, key_compare<K>{});
+        return std::lower_bound(c.begin(), c.end(), k, cmp());
     }
     template <typename K> iterator upper_bound(const K& k) noexcept(true) {
-        return std::upper_bound(c.begin(), c.end(), k, key_compare<K>{});
+        return std::upper_bound(c.begin(), c.end(), k, cmp());
     }
     template <typename K>
     const_iterator upper_bound(const K& k) const noexcept(true) {
-        return std::upper_bound(c.begin(), c.end(), k, key_compare<K>{});
+        return std::upper_bound(c.begin(), c.end(), k, cmp());
     }
     template <typename K> auto equal_range(const K& k) noexcept(true) {
-        return std::equal_range(c.begin(), c.end(), k, key_compare<K>{});
+        return std::equal_range(c.begin(), c.end(), k, cmp());
     }
     template <typename K> auto equal_range(const K& k) const noexcept(true) {
-        return std::equal_range(c.begin(), c.end(), k, key_compare<K>{});
+        return std::equal_range(c.begin(), c.end(), k, cmp());
     }
 
     iterator insert(value_type&& v) {
@@ -89,12 +99,16 @@ template <typename Key, typename Value> class flat_multimap {
     iterator erase(iterator first, iterator last) {
         return c.erase(first, last);
     }
-    template <typename K> size_type erase(const K& k) {
-        auto _r = equal_range(k);
-        std::size_t s = _r.second - _r.first;
-        erase(_r.first, _r.second);
-        return s;
-    }
+    // template <typename K> size_type erase(const K& k) {
+    //     auto [__begin, __tail] = equal_range(k);
+    //     if (__begin != end() && key_comp()(__begin->first, k)) {
+    //         const std::size_t s = __tail - __begin;
+    //         erase(__tail, __begin);
+    //         return s;
+    //     } else {
+    //         return 0;
+    //     }
+    // }
     node_type extract(iterator ite) {
         node_type nh(std::move(*ite));
         erase(ite);
@@ -122,7 +136,12 @@ template <typename Key, typename Value> class flat_multimap {
         }
     }
 
+    constexpr const key_compare& key_comp() const noexcept(true) {
+        return *this;
+    }
+
   protected:
     container_type c;
+    constexpr const cmp_type& cmp() { return *this; }
 };
 }  // namespace chx::net::detail

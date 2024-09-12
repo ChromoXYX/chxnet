@@ -4,14 +4,12 @@
 #include <liburing.h>
 
 #include <memory>
-#include <vector>
 #include <queue>
 #include <list>
 
 #include "./detail/task_declare.hpp"
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
-#include "./detail/flat_set.hpp"
 #include "./error_code.hpp"
 
 #include <cstdint>
@@ -120,7 +118,6 @@ class io_context : CHXNET_NONCOPYABLE {
         std::is_nothrow_destructible_v<decltype(__M_outstanding_task_list)>);
 
   protected:
-    // detail::flat_set<std::size_t> __M_avail_set;
     task_t* acquire() {
         task_t* r = nullptr;
         if (!__M_task_pool.empty()) {
@@ -185,6 +182,7 @@ class io_context : CHXNET_NONCOPYABLE {
         auto* sqe = get_sqe();
         io_uring_prep_cancel(sqe, task, flags);
         sqe->flags = IOSQE_CQE_SKIP_SUCCESS;
+        submit();
     }
 
     template <typename... Signature, typename FinalFunctor,

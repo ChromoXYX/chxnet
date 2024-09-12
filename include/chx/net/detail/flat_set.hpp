@@ -45,7 +45,7 @@ class flat_set : Compare {
     void clear() noexcept(true) { __M_c.clear(); }
 
     template <typename K> constexpr iterator find(K&& k) noexcept(true) {
-        auto [__front, __tail] = equal_range(std::forward<K>(k));
+        auto __front = lower_bound(std::forward<K>(k));
         if (__front == end() || (!__equal(std::forward<K>(k), *__front))) {
             return end();
         } else {

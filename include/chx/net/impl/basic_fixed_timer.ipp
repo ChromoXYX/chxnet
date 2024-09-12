@@ -30,48 +30,18 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
 
         void operator()() override {
             if (valid()) {
-                if (auto ite = find_position(); ite != timer().__M_set.end()) {
-                    assign_ec(task()->__M_ec, errc::operation_canceled);
-                    // task()->__M_token(task());
-                    // timer()->__M_set.erase(ite);
-                    timer().__M_trash.emplace_back(
-                        std::move(timer().__M_set.extract(ite).mapped()));
-                }
-                controller_->exclude();
+                controller_->cancel(task());
             }
-        }
-
-        auto find_position() noexcept(true) {
-            auto [begin, end] =
-                timer().__M_set.equal_range(controller_->time_point);
-            for (auto ite = begin; ite != end; ++ite) {
-                if (ite->second.get() == task()) {
-                    return ite;
-                }
-            }
-            return timer().__M_set.end();
         }
 
         void update(
             const std::chrono::time_point<std::chrono::system_clock>& new_tp) {
-            try {
-                auto node = timer().__M_set.extract(find_position());
-                node.key() = new_tp;
-                timer().__M_set.insert(std::move(node));
-                controller_->time_point = new_tp;
-            } catch (...) {
-                release();
-                std::rethrow_exception(std::current_exception());
-            }
+            controller_->update(new_tp);
         }
 
         template <typename Rep, typename Period>
         void update(const std::chrono::duration<Rep, Period>& dur) {
-            if (dur.count() != 0) {
-                update(std::chrono::system_clock::now() + dur);
-            } else {
-                update({});
-            }
+            controller_->update(dur);
         }
 
         constexpr auto time_point() noexcept(true) {
@@ -104,20 +74,40 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
         void cancel(io_context::task_t* t) override {
             if (timer_valid()) {
                 assert(t == task);
-                auto [begin, end] = timer->__M_set.equal_range(time_point);
-                auto pos = end;
-                for (auto ite = begin; ite != end; ++ite) {
-                    if (ite->second.get() == task) {
-                        pos = ite;
-                        break;
-                    }
-                }
-                if (pos != end) {
+                auto pos = find_position();
+                if (pos != timer->__M_set.end()) {
                     assign_ec(task->__M_ec, errc::operation_canceled);
                     timer->__M_trash.emplace_back(
                         std::move(timer->__M_set.extract(pos).mapped()));
                 }
                 exclude();
+            }
+        }
+
+        auto find_position() noexcept(true) {
+            auto [begin, end] = timer->__M_set.equal_range(time_point);
+            for (auto ite = begin; ite != end; ++ite) {
+                if (ite->second.get() == task) {
+                    return ite;
+                }
+            }
+            return timer->__M_set.end();
+        }
+
+        void update(
+            const std::chrono::time_point<std::chrono::system_clock>& new_tp) {
+            auto node = timer->__M_set.extract(find_position());
+            node.key() = new_tp;
+            timer->__M_set.insert(std::move(node));
+            time_point = new_tp;
+        }
+
+        template <typename Rep, typename Period>
+        void update(const std::chrono::duration<Rep, Period>& dur) {
+            if (dur.count() != 0) {
+                update(std::chrono::system_clock::now() + dur);
+            } else {
+                update({});
             }
         }
     };
