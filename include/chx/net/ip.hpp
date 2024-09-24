@@ -2,7 +2,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
-
+#include <cstdint>
 #include "./error_code.hpp"
 
 namespace chx::net::ip {

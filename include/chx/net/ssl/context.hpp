@@ -109,7 +109,7 @@ class context : CHXNET_NONCOPYABLE {
         }
 
         if (__M_ssl_ctx == nullptr) {
-            __CHXNET_THROW_CSTR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
         }
     }
 
@@ -122,7 +122,7 @@ class context : CHXNET_NONCOPYABLE {
                                              ft == pem ? SSL_FILETYPE_PEM
                                                        : SSL_FILETYPE_ASN1);
         if (r != 1) {
-            __CHXNET_THROW_CSTR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
         }
     }
     void use_PrivateKey_file(const char* cstr, filetype ft) {
@@ -131,14 +131,14 @@ class context : CHXNET_NONCOPYABLE {
                                             ft == pem ? SSL_FILETYPE_PEM
                                                       : SSL_FILETYPE_ASN1);
         if (r != 1) {
-            __CHXNET_THROW_CSTR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
         }
     }
     void use_certificate_chain_file(const char* cstr) {
         ERR_clear_error();
         int r = SSL_CTX_use_certificate_chain_file(native_handler(), cstr);
         if (r != 1) {
-            __CHXNET_THROW_CSTR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
         }
     }
 
@@ -174,13 +174,13 @@ class context : CHXNET_NONCOPYABLE {
     void set_min_proto_version(protocol_version v) {
         ERR_clear_error();
         if (SSL_CTX_set_min_proto_version(native_handler(), v) == 0) {
-            __CHXNET_THROW_CSTR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
         }
     }
     void set_max_proto_version(protocol_version v) {
         ERR_clear_error();
         if (SSL_CTX_set_max_proto_version(native_handler(), v) == 0) {
-            __CHXNET_THROW_CSTR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
         }
     }
 

@@ -65,7 +65,7 @@ template <typename Socket> class stream : public Socket {
         SSL_set_bio(get_associated_SSL(), bio, bio);
         return;
     error:
-        __CHXNET_THROW_CSTR_WITH(detail::last_error(), bad_ssl_socket);
+        __CHXNET_THROW_STR_WITH(detail::last_error(), bad_ssl_socket);
     }
 
   public:

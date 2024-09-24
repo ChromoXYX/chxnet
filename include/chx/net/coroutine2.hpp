@@ -1,5 +1,7 @@
 #pragma once
 
+#define CHXNET_COROUTINE_ENABLED 1
+
 #include "attribute.hpp"
 
 #include <coroutine>
@@ -9,6 +11,7 @@
 #include "./async_token.hpp"
 #include "./detail/type_identity.hpp"
 #include "./detail/sfinae_placeholder.hpp"
+#include "./detail/deliver_exception.hpp"
 #include "./cancellation.hpp"
 #include "./async_combine.hpp"
 
@@ -23,12 +26,6 @@ struct this_context_t {
 inline constexpr struct this_context_t this_context = {};
 
 namespace detail::coroutine {
-
-inline void deliver_exception(io_context* ctx, std::exception_ptr ex) {
-    ctx->async_nop(
-        [ex](const std::error_code& ec) { std::rethrow_exception(ex); });
-}
-
 class task_impl : CHXNET_NONCOPYABLE {
     struct promise {
         ~promise() {

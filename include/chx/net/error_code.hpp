@@ -208,19 +208,30 @@ inline void assign_ec(
 #define __CHXNET_MAKE_QUOTE_IMPL(s) #s
 #define __CHXNET_MAKE_QUOTE(s) __CHXNET_MAKE_QUOTE_IMPL(s)
 
-#define __CHXNET_MAKE_EX_WITH(ec, type)                                        \
-    type(ec.message() + " at file: " __FILE__                                  \
-                        " line: " __CHXNET_MAKE_QUOTE(__LINE__))
-#define __CHXNET_MAKE_EX(ec) __CHXNET_MAKE_EX_WITH(ec, ::chx::net::exception)
+#define __CHXNET_MAKE_EX_WITH(v, type)                                         \
+    type(v + " at file: " __FILE__ " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+#define __CHXNET_MAKE_EX_CODE_WITH(code, type)                                 \
+    __CHXNET_MAKE_EX_WITH(::chx::net::detail::make_ec(code).message(), type)
+#define __CHXNET_MAKE_EX_CODE(code)                                            \
+    __CHXNET_MAKE_EX_CODE_WITH(code, ::chx::net::exception)
+#define __CHXNET_MAKE_EX_CSTR_WITH(cstr, type)                                 \
+    type(cstr " at file: " __FILE__ " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+#define __CHXNET_MAKE_EX_CSTR(cstr)                                            \
+    __CHXNET_MAKE_EX_CSTR_WITH(cstr, ::chx::net::exception)
+
 #define __CHXNET_THROW_WITH(code, type)                                        \
-    throw type(::chx::net::detail::make_ec(code).message() +                   \
-               " at file: " __FILE__ " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+    throw __CHXNET_MAKE_EX_WITH(::chx::net::detail::make_ec(code).message(),   \
+                                type)
 #define __CHXNET_THROW(code) __CHXNET_THROW_WITH(code, ::chx::net::exception)
-#define __CHXNET_THROW_EC_WITH(ec, type) throw __CHXNET_MAKE_EX_WITH(ec, type)
+#define __CHXNET_THROW_EC_WITH(ec, type)                                       \
+    throw __CHXNET_MAKE_EX_WITH(ec.message(), type)
 #define __CHXNET_THROW_EC(ec) __CHXNET_THROW_EC_WITH(ec, ::chx::net::exception)
+#define __CHXNET_THROW_STR_WITH(cstr, type)                                    \
+    throw __CHXNET_MAKE_EX_WITH(std::string(cstr), type)
+#define __CHXNET_THROW_STR(cstr)                                               \
+    __CHXNET_THROW_STR_WITH(cstr, ::chx::net::exception)
 #define __CHXNET_THROW_CSTR_WITH(cstr, type)                                   \
-    throw type(std::string(cstr) + " at file: " __FILE__                       \
-                                   " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+    throw __CHXNET_MAKE_EX_CSTR_WITH(cstr, type)
 #define __CHXNET_THROW_CSTR(cstr)                                              \
     __CHXNET_THROW_CSTR_WITH(cstr, ::chx::net::exception)
 }  // namespace detail

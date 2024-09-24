@@ -77,8 +77,12 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
                 auto pos = find_position();
                 if (pos != timer->__M_set.end()) {
                     assign_ec(task->__M_ec, errc::operation_canceled);
-                    timer->__M_trash.emplace_back(
-                        std::move(timer->__M_set.extract(pos).mapped()));
+                    try {
+                        timer->__M_trash.emplace_back(
+                            std::move(timer->__M_set.extract(pos).mapped()));
+                    } catch (const std::exception& e) {
+                        rethrow_with_fatal(std::current_exception());
+                    }
                 }
                 exclude();
             }

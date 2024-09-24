@@ -11,6 +11,7 @@
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
 #include "./error_code.hpp"
+#include "./exception.hpp"
 
 #include <cstdint>
 
@@ -24,15 +25,6 @@
 
 namespace chx::net {
 class io_context;
-
-class bad_io_uring_init : public exception {
-  public:
-    using exception::exception;
-};
-class bad_io_context_exec : public exception {
-  public:
-    using exception::exception;
-};
 
 struct cancellation_signal;
 
@@ -119,18 +111,25 @@ class io_context : CHXNET_NONCOPYABLE {
 
   protected:
     task_t* acquire() {
-        task_t* r = nullptr;
-        if (!__M_task_pool.empty()) {
-            std::unique_ptr ptr = std::move(__M_task_pool.front());
-            __M_task_pool.pop();
-            r = __M_outstanding_task_list.emplace_front(std::move(ptr)).get();
-            r->reset();
-        } else {
-            r = __M_outstanding_task_list.emplace_front(new task_t(this)).get();
+        try {
+            task_t* r = nullptr;
+            if (!__M_task_pool.empty()) {
+                std::unique_ptr ptr = std::move(__M_task_pool.front());
+                __M_task_pool.pop();
+                r = __M_outstanding_task_list.emplace_front(std::move(ptr))
+                        .get();
+                r->reset();
+            } else {
+                r = __M_outstanding_task_list.emplace_front(new task_t(this))
+                        .get();
+            }
+            r->__M_avail = false;
+            r->__M_location = __M_outstanding_task_list.begin();
+            return r;
+        } catch (const std::exception&) {
+            rethrow_with_fatal(std::make_exception_ptr(
+                __CHXNET_MAKE_EX_CSTR("failed to obtain a task_t")));
         }
-        r->__M_avail = false;
-        r->__M_location = __M_outstanding_task_list.begin();
-        return r;
     }
 
     void release(task_t* task) noexcept(true) {
@@ -154,7 +153,8 @@ class io_context : CHXNET_NONCOPYABLE {
                 io_uring_sqe_set_data(sqe, task);
                 return sqe;
             } else {
-                __CHXNET_THROW_WITH(errc::internal_error, bad_io_context_exec);
+                rethrow_with_fatal(std::make_exception_ptr(
+                    __CHXNET_MAKE_EX_CSTR("Cannot obtain io_uring_sqe*")));
             }
         }
     }
@@ -198,7 +198,8 @@ class io_context : CHXNET_NONCOPYABLE {
     void __run() {
         while (outstanding_tasks()) {
             if (int r = io_uring_submit_and_wait(&__M_ring, 1); r < 0) {
-                __CHXNET_THROW_WITH(-r, bad_io_context_exec);
+                rethrow_with_fatal(std::make_exception_ptr(
+                    __CHXNET_MAKE_EX_CSTR("io_uring_submit_and_wait failed")));
             }
 
             io_uring_cqe* cqe;
@@ -223,7 +224,7 @@ class io_context : CHXNET_NONCOPYABLE {
                         // if task is aware of notif
                         try {
                             task->__M_token(task);
-                        } catch (...) {
+                        } catch (const std::exception&) {
                             release(task);
                             std::rethrow_exception(std::current_exception());
                         }
@@ -243,7 +244,7 @@ class io_context : CHXNET_NONCOPYABLE {
                             bool _need_release = !task->__M_persist;
                             try {
                                 task->__M_token(task);
-                            } catch (...) {
+                            } catch (const std::exception&) {
                                 release(task);
                                 std::rethrow_exception(
                                     std::current_exception());
@@ -272,7 +273,8 @@ class io_context : CHXNET_NONCOPYABLE {
         if (int r = io_uring_submit(&__M_ring); r >= 0) {
             return;
         } else {
-            __CHXNET_THROW_WITH(-r, bad_io_context_exec);
+            rethrow_with_fatal(std::make_exception_ptr(
+                __CHXNET_MAKE_EX_CSTR("io_uring_submit failed")));
         }
     }
 
@@ -288,7 +290,8 @@ class io_context : CHXNET_NONCOPYABLE {
                 static_task_sz > 4096 ? static_task_sz : 4096, &__M_ring,
                 &params);
             r != 0) {
-            __CHXNET_THROW_WITH(-r, bad_io_uring_init);
+            rethrow_with_fatal(std::make_exception_ptr(
+                __CHXNET_MAKE_EX_CSTR("io_uring_queue_init_params failed")));
         }
     }
 
@@ -297,17 +300,6 @@ class io_context : CHXNET_NONCOPYABLE {
      *
      */
     ~io_context() {
-        // __M_mt_destruct.store(true);
-        // __M_destruct = true;
-        // try {
-        //     while (!is_stopped() && (!__M_dynamic_task_queue.empty())) {
-        //         __async_cancel_all();
-        //         __run();
-        //     }
-        // } catch (...) {
-        //     io_uring_queue_exit(&__M_ring);
-        //     std::rethrow_exception(std::current_exception());
-        // }
         io_uring_queue_exit(&__M_ring);
     }
     /**

@@ -2,7 +2,7 @@
 
 #include <execinfo.h>
 #include <string>
-#include <cstdint>
+#include <exception>
 #ifdef CHXNET_ENABLE_EXCEPTION_BACKTRACE
 #include <boost/stacktrace.hpp>
 #endif
@@ -37,4 +37,20 @@ class exception : public std::exception {
     }
 #endif
 };
+// indicates that chxnet has failed to make A recovery.
+class fatal_exception {
+    std::exception_ptr __M_ex;
+
+  public:
+    fatal_exception() noexcept(true) {}
+    fatal_exception(const std::exception_ptr& e) : __M_ex(e) {}
+    fatal_exception(const fatal_exception& other) : __M_ex(other.__M_ex) {}
+
+    std::exception_ptr nested_ptr() const noexcept(true) { return __M_ex; }
+    void rethrow_nested() const { std::rethrow_exception(__M_ex); }
+};
+
+inline void rethrow_with_fatal [[noreturn]] (const std::exception_ptr& ex) {
+    throw fatal_exception(ex);
+}
 }  // namespace chx::net

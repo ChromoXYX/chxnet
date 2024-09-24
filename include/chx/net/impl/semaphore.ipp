@@ -31,9 +31,13 @@ template <> struct async_operation<tags::task_queue_tag> {
                         return ptr.get() == task;
                     });
                 if (ite != queue->__M_queue.end()) {
-                    queue->__M_trash.emplace_back(std::move(*ite));
-                    queue->__M_queue.erase(ite);
-                    async_flush();
+                    try {
+                        queue->__M_trash.emplace_back(std::move(*ite));
+                        queue->__M_queue.erase(ite);
+                        async_flush();
+                    } catch (const std::exception&) {
+                        rethrow_with_fatal(std::current_exception());
+                    }
                 }
                 exclude();
             }
