@@ -80,6 +80,10 @@ class basic_fixed_timer
     template <typename Rep, typename Period, typename CompletionToken>
     decltype(auto) async_register(const std::chrono::duration<Rep, Period>& dur,
                                   CompletionToken&& completion_token);
+    template <typename Clock, typename Duration, typename CompletionToken>
+    decltype(auto)
+    async_register(const std::chrono::time_point<Clock, Duration>& dur,
+                   CompletionToken&& completion_token);
 
     void async_clear() {
         get_associated_io_context().async_nop(
@@ -146,6 +150,10 @@ class fixed_timeout_timer
     template <typename Rep, typename Period, typename CompletionToken>
     decltype(auto) async_register(const std::chrono::duration<Rep, Period>& dur,
                                   CompletionToken&& completion_token);
+    template <typename Clock, typename Duration, typename CompletionToken>
+    decltype(auto)
+    async_register(const std::chrono::time_point<Clock, Duration>& dur,
+                   CompletionToken&& completion_token);
 
     void async_clear() {
         get_associated_io_context().async_nop(

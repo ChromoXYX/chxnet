@@ -16,7 +16,7 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
         io_context::task_t* task() { return controller_->task; }
 
         fxd_tmr_cncl(controller<Timer>* p) : controller_(p->weak_from_this()) {}
-        ~fxd_tmr_cncl() {}
+        virtual ~fxd_tmr_cncl() {}
 
         constexpr void release() noexcept(true) { controller_.release(); }
 
@@ -63,7 +63,7 @@ template <> struct async_operation<tags::fxd_tmr_cncl_cntl> {
         constexpr void exclude() noexcept(true) { timer.release(); }
         constexpr bool timer_valid() noexcept(true) { return !timer.expired(); }
 
-        ~controller() {}
+        virtual ~controller() {}
 
         void operator()(cancellation_signal& signal) override {
             if (timer_valid()) {
@@ -186,6 +186,27 @@ decltype(auto) chx::net::fixed_timeout_timer::async_register(
         this,
         dur.count() != 0 ? (std::chrono::system_clock::now() + dur)
                          : detail::__zero_time_point,
+        detail::async_token_bind<const std::error_code&>(
+            std::forward<CompletionToken>(completion_token)));
+}
+
+template <typename Timer>
+template <typename Clock, typename Duration, typename CompletionToken>
+decltype(auto) chx::net::basic_fixed_timer<Timer>::async_register(
+    const std::chrono::time_point<Clock, Duration>& tp,
+    CompletionToken&& completion_token) {
+    return detail::async_operation<detail::tags::fixed_timer>()(
+        this, tp,
+        detail::async_token_bind<const std::error_code&>(
+            std::forward<CompletionToken>(completion_token)));
+}
+
+template <typename Clock, typename Duration, typename CompletionToken>
+decltype(auto) chx::net::fixed_timeout_timer::async_register(
+    const std::chrono::time_point<Clock, Duration>& tp,
+    CompletionToken&& completion_token) {
+    return detail::async_operation<detail::tags::fixed_timer>()(
+        this, tp,
         detail::async_token_bind<const std::error_code&>(
             std::forward<CompletionToken>(completion_token)));
 }

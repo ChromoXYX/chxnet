@@ -32,13 +32,13 @@ class tcp::acceptor : public socket_base {
      *
      * @param ctx The associated io_context.
      * @param ep The endpoint to be listened on.
-     * @param reuse_addr Whether to set SO_REUSEADDR for the acceptor.
+     * @param reuse_port Whether to set SO_REUSEPORT for the acceptor.
      */
-    acceptor(io_context& ctx, const endpoint& ep, bool reuse_addr = true)
+    acceptor(io_context& ctx, const endpoint& ep, bool reuse_port = true)
         : socket_base(&ctx) {
         open(ep.protocol());
-        if (reuse_addr) {
-            set_option(SOL_SOCKET, SO_REUSEADDR, true);
+        if (reuse_port) {
+            set_option(SOL_SOCKET, SO_REUSEPORT, true);
         }
         bind(ep);
         listen();

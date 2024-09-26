@@ -43,7 +43,6 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
     void emit() {
         if (__M_op) {
             (*__M_op)();
-            clear();
         }
     }
 
@@ -166,7 +165,6 @@ template <> struct async_operation<tags::async_combine_cancel_and_submit> {
             task->__M_custom_cancellation->cancel(task);
         }
     }
-    void submit(io_context* ctx) const { ctx->submit(); }
 };
 
 template <typename Operation, typename CompletionToken,

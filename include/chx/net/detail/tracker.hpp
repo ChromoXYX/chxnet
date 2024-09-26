@@ -162,9 +162,8 @@ template <typename Object> class weak_ptr {
         : __M_ptr(obj), __M_guard(owner) {}
 };
 
-template <typename Object> struct enable_weak_from_this {
+template <typename Object> struct enable_weak_from_this : CHXNET_NONCOPYABLE {
     enable_weak_from_this() : owner(new counter_block) {}
-    enable_weak_from_this(enable_weak_from_this&&) noexcept(true) = default;
 
     constexpr weak_ptr<Object> weak_from_this() noexcept(true) {
         return weak_ptr(static_cast<Object*>(this), owner);

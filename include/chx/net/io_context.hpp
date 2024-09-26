@@ -182,7 +182,6 @@ class io_context : CHXNET_NONCOPYABLE {
         auto* sqe = get_sqe();
         io_uring_prep_cancel(sqe, task, flags);
         sqe->flags = IOSQE_CQE_SKIP_SUCCESS;
-        submit();
     }
 
     template <typename... Signature, typename FinalFunctor,
