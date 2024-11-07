@@ -88,7 +88,7 @@ class tcp::acceptor : public socket_base {
      */
     void listen(int backlog, std::error_code& ec) noexcept(true) {
         if (::listen(__M_fd, backlog) == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         } else {
             ec.clear();
         }

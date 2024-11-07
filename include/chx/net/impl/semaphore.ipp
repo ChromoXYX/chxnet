@@ -64,7 +64,7 @@ template <> struct async_operation<tags::task_queue_tag> {
 
         void operator()(cancellation_signal& signal) override {
             if (valid()) {
-                signal.emplace(new cncl(this));
+                signal.emplace(std::make_unique<cncl>(this));
             }
         }
 
@@ -95,7 +95,16 @@ template <> struct async_operation<tags::task_queue_tag> {
                 .emplace_back(std::make_unique<io_context::task_t>(
                     &self->get_associated_io_context()))
                 .get();
-        task->__M_custom_cancellation.reset(new cncl_cntl(self, task));
+
+        if (self->__M_res_queue.empty()) {
+            task->__M_custom_cancellation =
+                std::make_unique<cncl_cntl<Resource>>(self, task);
+        } else {
+            task->__M_cancel_type = task->__CT_no_cancel;
+            auto res = std::move(self->__M_res_queue.back());
+            self->__M_res_queue.pop();
+            self->release(std::move(res));
+        }
 
         return async_token_init(
             task->__M_token.emplace(async_token_generate(

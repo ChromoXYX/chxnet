@@ -11,6 +11,7 @@ class semaphore : public detail::enable_weak_from_this<semaphore<ResourcePtr>> {
     io_context* __M_ctx = nullptr;
 
     std::vector<std::unique_ptr<io_context::task_t>> __M_queue, __M_trash;
+    std::queue<ResourcePtr> __M_res_queue;
     bool __M_flushing = false;
 
   public:
@@ -23,8 +24,7 @@ class semaphore : public detail::enable_weak_from_this<semaphore<ResourcePtr>> {
     template <typename CompletionToken>
     decltype(auto) async_acquire(CompletionToken&& completion_token);
 
-    constexpr bool empty() noexcept(true) { return __M_queue.empty(); }
-    template <typename Resource> bool release(Resource&& resource) {
+    template <typename R> void release(R&& resource) {
         if (!__M_queue.empty()) {
             std::unique_ptr task = std::move(__M_queue.front());
             __M_queue.erase(__M_queue.begin());
@@ -35,20 +35,8 @@ class semaphore : public detail::enable_weak_from_this<semaphore<ResourcePtr>> {
                         reinterpret_cast<std::uint64_t>(&res);
                     task->__M_token(task.get());
                 });
-            return true;
         } else {
-            return false;
-        }
-    }
-    template <typename Resource> bool inplace_release(Resource&& resource) {
-        if (!__M_queue.empty()) {
-            std::unique_ptr task = std::move(__M_queue.front());
-            __M_queue.erase(__M_queue.begin());
-            task->__M_additional = reinterpret_cast<std::uint64_t>(&resource);
-            task->__M_token(task.get());
-            return true;
-        } else {
-            return false;
+            __M_res_queue.emplace(std::forward<R>(resource));
         }
     }
 };

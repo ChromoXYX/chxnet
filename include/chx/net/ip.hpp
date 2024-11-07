@@ -73,7 +73,7 @@ class address_v4 {
         if (inet_pton(AF_INET, cstr, &_r) == 1) {
             ec.clear();
         } else {
-            detail::assign_ec(ec, EAFNOSUPPORT);
+            assign_ec(ec, EAFNOSUPPORT);
         }
         return address_v4{ntohl(_r)};
     }
@@ -153,7 +153,7 @@ class address_v6 {
         if (inet_pton(AF_INET6, cstr, &_r) == 1) {
             ec.clear();
         } else {
-            detail::assign_ec(ec, EAFNOSUPPORT);
+            assign_ec(ec, EAFNOSUPPORT);
         }
         return address_v6{_r};
     }
@@ -242,7 +242,7 @@ class address {
         if (!ec) {
             return v6;
         }
-        detail::assign_ec(ec, errc::invalid_argument);
+        assign_ec(ec, errc::invalid_argument);
         return {};
     }
     static address from_string(const std::string& addr,

@@ -34,9 +34,8 @@ int main() {
     });
     net::async_timeout(ctx, std::chrono::seconds(1),
                        [&](const std::error_code& e) {
-                           assert(!queue.empty());
                            std::cout << "Timeout\n";
-                           queue.inplace_release(new int(42));
+                           queue.release(new int(42));
                            std::cout << "Semaphore pop\n";
                        });
     ctx.run();

@@ -193,7 +193,6 @@ inline std::error_condition make_error_condition(errc::errc_impl e) {
     return {e, error_category()};
 }
 
-namespace detail {
 inline std::error_code
 make_ec(int code,
         const std::error_category& category = error_category()) noexcept(true) {
@@ -204,6 +203,7 @@ inline void assign_ec(
     const std::error_category& category = error_category()) noexcept(true) {
     ec.assign(code, category);
 }
+}  // namespace chx::net
 
 #define __CHXNET_MAKE_QUOTE_IMPL(s) #s
 #define __CHXNET_MAKE_QUOTE(s) __CHXNET_MAKE_QUOTE_IMPL(s)
@@ -211,7 +211,7 @@ inline void assign_ec(
 #define __CHXNET_MAKE_EX_WITH(v, type)                                         \
     type(v + " at file: " __FILE__ " line: " __CHXNET_MAKE_QUOTE(__LINE__))
 #define __CHXNET_MAKE_EX_CODE_WITH(code, type)                                 \
-    __CHXNET_MAKE_EX_WITH(::chx::net::detail::make_ec(code).message(), type)
+    __CHXNET_MAKE_EX_WITH(::chx::net::make_ec(code).message(), type)
 #define __CHXNET_MAKE_EX_CODE(code)                                            \
     __CHXNET_MAKE_EX_CODE_WITH(code, ::chx::net::exception)
 #define __CHXNET_MAKE_EX_CSTR_WITH(cstr, type)                                 \
@@ -220,8 +220,7 @@ inline void assign_ec(
     __CHXNET_MAKE_EX_CSTR_WITH(cstr, ::chx::net::exception)
 
 #define __CHXNET_THROW_WITH(code, type)                                        \
-    throw __CHXNET_MAKE_EX_WITH(::chx::net::detail::make_ec(code).message(),   \
-                                type)
+    throw __CHXNET_MAKE_EX_WITH(::chx::net::make_ec(code).message(), type)
 #define __CHXNET_THROW(code) __CHXNET_THROW_WITH(code, ::chx::net::exception)
 #define __CHXNET_THROW_EC_WITH(ec, type)                                       \
     throw __CHXNET_MAKE_EX_WITH(ec.message(), type)
@@ -234,5 +233,3 @@ inline void assign_ec(
     throw __CHXNET_MAKE_EX_CSTR_WITH(cstr, type)
 #define __CHXNET_THROW_CSTR(cstr)                                              \
     __CHXNET_THROW_CSTR_WITH(cstr, ::chx::net::exception)
-}  // namespace detail
-}  // namespace chx::net

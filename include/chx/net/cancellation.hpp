@@ -15,8 +15,9 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::outer_cancel> {
     void invoke_cancel(io_context* ctx, io_context::task_t* task) const {
         task->__M_token(task);
     }
-    constexpr bool get_cancel_type(io_context::task_t* t) const noexcept(true) {
-        return t->__M_cancel_invoke;
+    constexpr io_context::task_t::__CancelType
+    get_cancel_type(io_context::task_t* t) const noexcept(true) {
+        return t->__M_cancel_type;
     }
 };
 
@@ -52,7 +53,7 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
     bool valid() const noexcept(true) { return __M_op.get(); }
     operator bool() const noexcept(true) { return valid(); }
 
-  private:
+  protected:
     void assign(io_context::task_t* task) noexcept(true) {
         struct ops : detail::cancellation_base {
             io_context::task_t* t;
@@ -71,16 +72,30 @@ struct cancellation_signal : CHXNET_NONCOPYABLE {
                     .invoke_cancel(&t->get_associated_io_context(), t);
             }
         };
-        if (!detail::async_operation<detail::tags::outer_cancel>()
-                 .get_cancel_type(task)) {
-            __M_op.reset(new ops(task));
+        if (!task->__M_custom_cancellation) {
+            switch (detail::async_operation<detail::tags::outer_cancel>()
+                        .get_cancel_type(task)) {
+            case io_context::task_t::__CT_io_uring_based: {
+                __M_op = std::make_unique<ops>(task);
+                break;
+            }
+            case io_context::task_t::__CT_invoke_cancel: {
+                __M_op = std::make_unique<ops2>(task);
+                break;
+            }
+            case detail::task_declare::task_decl::__CT_no_cancel:
+                __M_op.reset();
+                break;
+            }
         } else {
-            __M_op.reset(new ops2(task));
+            (*task->__M_custom_cancellation)(*this);
         }
     }
-    void emplace(detail::cancellation_base* base) noexcept(true) {
-        __M_op.reset(base);
+    void
+    emplace(std::unique_ptr<detail::cancellation_base> base) noexcept(true) {
+        __M_op = std::move(base);
     }
+
     std::unique_ptr<detail::cancellation_base> __M_op;
 };
 
@@ -91,10 +106,6 @@ struct cancellation_assign {
     void operator()(io_context::task_t* t,
                     cancellation_signal& s) noexcept(true) {
         s.assign(t);
-    }
-    void emplace(cancellation_base* base,
-                 cancellation_signal& s) noexcept(true) {
-        s.emplace(base);
     }
 };
 
@@ -111,12 +122,7 @@ template <typename BindCompletionToken> struct cancellation_ops {
     template <typename FinalFunctor>
     decltype(auto) generate_token(io_context::task_t* task,
                                   FinalFunctor&& final_functor) {
-        if (task->__M_custom_cancellation) {
-            assert(!task->__M_cancel_invoke);
-            (*task->__M_custom_cancellation)(signal);
-        } else {
-            signal.assign(task);
-        }
+        signal.assign(task);
         return async_token_generate(task,
                                     std::forward<FinalFunctor>(final_functor),
                                     bind_completion_token);
@@ -156,10 +162,17 @@ struct async_combine_cancel_and_submit {};
 template <> struct async_operation<tags::async_combine_cancel_and_submit> {
     void cancel(io_context* ctx, io_context::task_t* task) const {
         if (!task->__M_custom_cancellation) {
-            if (task->__M_cancel_invoke) {
-                task->__M_token(task);
-            } else {
+            switch (task->__M_cancel_type) {
+            case task_declare::task_decl::__CT_io_uring_based: {
                 ctx->cancel_task(task);
+                break;
+            }
+            case task_declare::task_decl::__CT_invoke_cancel: {
+                task->__M_token(task);
+                break;
+            }
+            case task_declare::task_decl::__CT_no_cancel:
+                break;
             }
         } else {
             task->__M_custom_cancellation->cancel(task);

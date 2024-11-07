@@ -6,6 +6,7 @@
 namespace chx::net::detail {
 namespace tags {
 struct delivery {};
+template <typename RetType> struct async_post {};
 }  // namespace tags
 template <> struct async_operation<tags::delivery> {
     template <typename FinalFunctor, typename CompletionToken>

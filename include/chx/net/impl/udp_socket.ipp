@@ -68,7 +68,7 @@ class udp::socket : public basic_socket<udp> {
                       endpoint.address().is_v4()
                           ? sizeof(sockaddr_in)
                           : sizeof(sockaddr_in6)) == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
     }
     void connect(const ip::udp::endpoint& endpoint) {
@@ -118,7 +118,7 @@ class udp::socket : public basic_socket<udp> {
             net::buffer(std::forward<ConstBuffer>(const_buffer));
         ssize_t r = 0;
         if (r = ::write(native_handler(), buf.data(), buf.size()); r == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
         return r;
     }
@@ -160,7 +160,7 @@ class udp::socket : public basic_socket<udp> {
             net::buffer(std::forward<MutableBuffer>(mutable_buffer));
         ssize_t r = 0;
         if (r = ::read(native_handler(), buf.data(), buf.size()); r == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
         return r;
     }
@@ -230,7 +230,7 @@ class udp::socket : public basic_socket<udp> {
                          ep.address().is_v4() ? sizeof(sockaddr_in)
                                               : sizeof(sockaddr_in6));
             r == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
         return r;
     }

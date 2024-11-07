@@ -306,8 +306,7 @@ template <> struct async_operation<tags::combine> {
                               type_identity<Operation> opt, OpArgs&&... args) {
         io_context::task_t* task = ctx.acquire();
 
-        task->__M_persist = true;
-        task->__M_cancel_invoke = true;
+        task->__M_cancel_type = task->__CT_invoke_cancel;
         using __ctad_type = decltype(detail::async_combine_impl(
             task,
             std::move(detail::async_token_generate(
@@ -329,8 +328,7 @@ template <> struct async_operation<tags::combine> {
                              type_identity<Operation> opt, OpArgs&&... args) {
         io_context::task_t* task = ctx.acquire();
 
-        task->__M_persist = true;
-        task->__M_cancel_invoke = true;
+        task->__M_cancel_type = task->__CT_invoke_cancel;
         using __ctad_type = decltype(detail::async_combine_impl(
             std::true_type{}, task,
             std::move(detail::async_token_generate(

@@ -33,6 +33,7 @@
 #include "./net/detached.hpp"
 #include "./net/buffer_sequence.hpp"
 #include "./net/ktimer.hpp"
+#include "./net/async_execute.hpp"
 #include "./net/detail/mm.hpp"
 #include "./net/detail/task_aware.hpp"
 #include "./net/detail/type_identity.hpp"

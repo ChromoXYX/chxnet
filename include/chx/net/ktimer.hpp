@@ -72,7 +72,7 @@ class ktimer : CHXNET_NONCOPYABLE {
         if (::timerfd_settime(__M_fd, 0, &its, nullptr) == 0) {
             ec.clear();
         } else {
-            detail::assign_ec(ec, errno);
+            assign_ec(ec, errno);
         }
     }
     template <typename Rep, typename Period>

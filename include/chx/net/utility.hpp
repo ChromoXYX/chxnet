@@ -51,7 +51,7 @@ class mapped_file : CHXNET_NONCOPYABLE {
                 __M_sz = file_size;
                 return;
             } else {
-                detail::assign_ec(e, errno);
+                assign_ec(e, errno);
                 __M_sz = 0;
                 __M_ptr = nullptr;
             }
@@ -77,7 +77,7 @@ class mapped_file : CHXNET_NONCOPYABLE {
             if (r == 0) {
                 return;
             } else {
-                detail::assign_ec(e, errno);
+                assign_ec(e, errno);
             }
         }
     }

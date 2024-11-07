@@ -14,7 +14,7 @@ class file : public file_descriptor {
             close();
             set_fd(_r);
         } else {
-            net::detail::assign_ec(e, errno);
+            net::assign_ec(e, errno);
         }
     }
 

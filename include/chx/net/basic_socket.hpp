@@ -79,7 +79,7 @@ template <typename Protocol> class basic_socket {
         if (::setsockopt(__M_fd, level, name, &v, sizeof(v)) == 0) {
             ec.clear();
         } else {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
     }
 
@@ -88,7 +88,7 @@ template <typename Protocol> class basic_socket {
         if (::setsockopt(__M_fd, level, name, &value, sizeof(value)) == 0) {
             ec.clear();
         } else {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
     }
 
@@ -115,7 +115,7 @@ template <typename Protocol> class basic_socket {
         if (::setsockopt(__M_fd, level, name, p, N) == 0) {
             e.clear();
         } else {
-            net::detail::assign_ec(e, errno);
+            net::assign_ec(e, errno);
         }
     }
 
@@ -139,12 +139,14 @@ template <typename Protocol> class basic_socket {
 
     void close(std::error_code& ec) noexcept(true) {
         if (::close(__M_fd) == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         } else {
             ec.clear();
         }
         __M_fd = -1;
     }
+
+    constexpr void release() noexcept(true) { __M_fd = -1; }
 
     void cancel() {
         net::detail::async_operation<detail::tags::cancel_fd>()(
@@ -170,7 +172,7 @@ template <typename Protocol> class basic_socket {
             if (::shutdown(__M_fd, how) == 0) {
                 ec.clear();
             } else {
-                net::detail::assign_ec(ec, errno);
+                net::assign_ec(ec, errno);
             }
         }
     }
@@ -199,7 +201,7 @@ template <typename Protocol> class basic_socket {
             __M_fd = new_fd;
             ec.clear();
         } else {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
     }
 
@@ -225,14 +227,14 @@ template <typename Protocol> class basic_socket {
             struct sockaddr_in sar = ep.sockaddr_in();
             if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
                        sizeof(sar)) == -1) {
-                net::detail::assign_ec(ec, errno);
+                net::assign_ec(ec, errno);
                 return;
             }
         } else {
             struct sockaddr_in6 sar = ep.sockaddr_in6();
             if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
                        sizeof(sar)) == -1) {
-                net::detail::assign_ec(ec, errno);
+                net::assign_ec(ec, errno);
                 return;
             }
         }
@@ -248,7 +250,7 @@ template <typename Protocol> class basic_socket {
             return Protocol::endpoint::make_endpoint(
                 reinterpret_cast<struct sockaddr*>(buffer));
         } else {
-            detail::assign_ec(e, errno);
+            assign_ec(e, errno);
             return {};
         }
     }
@@ -272,7 +274,7 @@ template <typename Protocol> class basic_socket {
             return Protocol::endpoint::make_endpoint(
                 reinterpret_cast<struct sockaddr*>(buffer));
         } else {
-            detail::assign_ec(e, errno);
+            assign_ec(e, errno);
             return {};
         }
     }

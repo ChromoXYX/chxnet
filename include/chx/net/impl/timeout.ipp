@@ -116,7 +116,8 @@ template <> struct async_operation<tags::io_uring_timeout> {
             auto* underlying = static_cast<typename TypeIdentity::type*>(
                 task->get_underlying_data());
             io_uring_prep_timeout(sqe, &underlying->ts, 0, 0);
-            wrapper_.handler.emplace(new timeout_cancellation(task));
+            wrapper_.handler.emplace(
+                std::make_unique<timeout_cancellation>(task));
             return async_token_init(ti, wrapper_.completion_token);
         }
     };

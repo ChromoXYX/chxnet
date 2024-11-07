@@ -117,6 +117,7 @@ class flat_multimap
 
     void clear() noexcept(true) { c.clear(); }
     constexpr std::size_t size() const noexcept(true) { return c.size(); }
+    constexpr bool empty() const noexcept(true) { return c.empty(); }
 
     constexpr iterator begin() noexcept(true) { return c.begin(); }
     constexpr iterator end() noexcept(true) { return c.end(); }
@@ -134,6 +135,13 @@ class flat_multimap
                 std::forward<Fn>(fn)(v);
             }
         }
+    }
+    template <typename K1> container_type pop_range(const K1& high) {
+        auto upper = upper_bound(high);
+        container_type _r(std::make_move_iterator(c.begin()),
+                          std::make_move_iterator(upper));
+        erase(c.begin(), upper);
+        return std::move(_r);
     }
 
     constexpr const key_compare& key_comp() const noexcept(true) {

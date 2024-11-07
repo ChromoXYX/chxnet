@@ -34,7 +34,7 @@ inline std::error_category& error_category() noexcept(true) {
 
 namespace detail {
 inline std::error_code make_ssl_ec(int value) noexcept(true) {
-    return net::detail::make_ec(value, ssl::error_category());
+    return net::make_ec(value, ssl::error_category());
 }
 }  // namespace detail
 }  // namespace chx::net::ssl

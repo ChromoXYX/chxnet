@@ -302,7 +302,7 @@ auto chx::net::detail::
             [](auto& completion_token,
                io_context::task_t* self) mutable -> int {
                 if (self->__M_res == 0) {
-                    detail::assign_ec(self->__M_ec, errc::eof);
+                    assign_ec(self->__M_ec, errc::eof);
                 }
                 completion_token(self->__M_ec,
                                  static_cast<std::size_t>(self->__M_res));

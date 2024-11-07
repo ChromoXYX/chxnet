@@ -402,11 +402,7 @@ template <typename T> struct [[nodiscard]] awaitable_impl : CHXNET_NONCOPYABLE {
     }
     cancellation_signal get_cancellation_signal() {
         cancellation_signal s;
-        if (get_associated_task()->__M_custom_cancellation) {
-            (*get_associated_task()->__M_custom_cancellation)(s);
-        } else {
-            detail::cancellation_assign()(get_associated_task(), s);
-        }
+        detail::cancellation_assign()(get_associated_task(), s);
         return std::move(s);
     }
 
@@ -555,7 +551,8 @@ struct when_any_impl {
             if constexpr (Idx != sizeof...(Awaitables)) {
                 auto& target = std::get<Idx>(await_tp);
                 if (target.connected()) {
-                    target.__M_view->pthen.reset(new then_impl<Idx>(this));
+                    target.__M_view->pthen =
+                        std::make_unique<then_impl<Idx>>(this);
                 }
                 assign<Idx + 1>();
             }

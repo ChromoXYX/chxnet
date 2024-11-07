@@ -88,12 +88,12 @@ class signal : CHXNET_NONCOPYABLE {
                     __M_fd.set_fd(f);
                 }
             } else {
-                detail::assign_ec(e, errno);
+                assign_ec(e, errno);
                 __M_fd.close();
             }
             return;
         } else {
-            detail::assign_ec(e, errno);
+            assign_ec(e, errno);
         }
     }
     void add(int sig) {
@@ -117,11 +117,11 @@ class signal : CHXNET_NONCOPYABLE {
                             __M_fd.set_fd(f);
                         }
                     } else {
-                        detail::assign_ec(e, errno);
+                        assign_ec(e, errno);
                         __M_fd.close();
                     }
                 } else {
-                    detail::assign_ec(e, errno);
+                    assign_ec(e, errno);
                 }
                 return;
             }
@@ -129,12 +129,12 @@ class signal : CHXNET_NONCOPYABLE {
                 return;
             }
             case -1: {
-                detail::assign_ec(e, errno);
+                assign_ec(e, errno);
                 return;
             }
             }
         } else {
-            detail::assign_ec(e, errno);
+            assign_ec(e, errno);
         }
     }
     void del(int sig) {

@@ -31,7 +31,7 @@ struct ssl_poll : SSLOperation {
             } else if (code == SSL_ERROR_WANT_WRITE) {
                 return use_poll()(*sock, POLLOUT, cntl.next());
             } else if (code == SSL_ERROR_SYSCALL) {
-                return cntl.complete(net::detail::make_ec(errno));
+                return cntl.complete(net::make_ec(errno));
             } else {
                 return cntl.complete(make_ssl_ec(code));
             }
@@ -57,10 +57,9 @@ struct ssl_poll : SSLOperation {
                 return perform(cntl);
             } else {
                 if (revents & (POLLRDHUP | POLLHUP)) {
-                    return cntl.complete(net::detail::make_ec(errc::eof));
+                    return cntl.complete(net::make_ec(errc::eof));
                 } else {
-                    return cntl.complete(
-                        net::detail::make_ec(errc::internal_error));
+                    return cntl.complete(net::make_ec(errc::internal_error));
                 }
             }
         } else {

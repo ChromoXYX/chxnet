@@ -2,14 +2,16 @@
 
 #include <cassert>
 #include <liburing.h>
+#include <sys/eventfd.h>
 
 #include <memory>
 #include <queue>
-#include <list>
+#include <algorithm>
 
 #include "./detail/task_declare.hpp"
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
+#include "./detail/interrupter.hpp"
 #include "./error_code.hpp"
 #include "./exception.hpp"
 
@@ -25,13 +27,13 @@
 
 namespace chx::net {
 class io_context;
-
 struct cancellation_signal;
 
 namespace detail {
 template <typename Tag> struct async_operation;
 namespace tags {
 struct use_delivery {};
+struct interrupter {};
 }  // namespace tags
 
 struct task_declare::task_decl : CHXNET_NONCOPYABLE {
@@ -48,16 +50,19 @@ struct task_declare::task_decl : CHXNET_NONCOPYABLE {
     std::uint64_t __M_additional = {};
 
     bool __M_avail = true;
-    bool __M_persist = false;
-    bool __M_notif = false;
-    bool __M_cancel_invoke = false;
+    bool __M_option1 = false;
+    union {
+        bool __M_notif = false;
+        bool __M_persist;
+    };
+    enum __CancelType : std::uint8_t {
+        __CT_io_uring_based,
+        __CT_invoke_cancel,
+        __CT_no_cancel
+    } __M_cancel_type = __CT_io_uring_based;
     bool __M_option5 = false;
     bool __M_option6 = false;
     bool __M_option7 = false;
-    // std::size_t __M_dyn_idx = 0;
-    // constexpr static std::size_t __END = -1;
-    std::list<std::unique_ptr<task_decl>>::iterator __M_location;
-    static_assert(sizeof(__M_location) == sizeof(std::size_t));
 
     std::error_code __M_ec;
     int __M_res;
@@ -70,9 +75,8 @@ struct task_declare::task_decl : CHXNET_NONCOPYABLE {
     void reset() noexcept(true) {
         __M_ec.clear();
         __M_res = 0;
-        __M_persist = false;
         __M_notif = false;
-        __M_cancel_invoke = false;
+        __M_cancel_type = __CT_io_uring_based;
 
         __M_custom_cancellation.reset();
     }
@@ -97,17 +101,27 @@ class io_context : CHXNET_NONCOPYABLE {
     using task_t = detail::task_declare::task_decl;
 
   protected:
+    struct message_base {
+        virtual ~message_base() = default;
+        virtual void operator()(io_context*) = 0;
+    };
+
     io_uring __M_ring;
     bool __M_stopped = false;
-    // bool __M_destructing = false;
+    const std::size_t __M_ring_sz;
 
-    // std::vector<std::unique_ptr<task_t>> __M_dynamic_task_queue;
     std::queue<std::unique_ptr<task_t>> __M_task_pool;
-    std::list<std::unique_ptr<task_t>> __M_outstanding_task_list;
+    std::vector<std::unique_ptr<task_t>> __M_outstanding_task_list;
+
+    alignas(64) std::mutex __M_msg_list_mutex;
+    alignas(64) std::atomic_bool __M_msg_list_empty = false;
+    std::vector<std::unique_ptr<message_base>> __M_msg_list;
 
     static_assert(
         std::is_nothrow_destructible_v<task_t> &&
         std::is_nothrow_destructible_v<decltype(__M_outstanding_task_list)>);
+
+    detail::interrupter __M_interrupter;
 
   protected:
     task_t* acquire() {
@@ -116,15 +130,14 @@ class io_context : CHXNET_NONCOPYABLE {
             if (!__M_task_pool.empty()) {
                 std::unique_ptr ptr = std::move(__M_task_pool.front());
                 __M_task_pool.pop();
-                r = __M_outstanding_task_list.emplace_front(std::move(ptr))
+                r = __M_outstanding_task_list.emplace_back(std::move(ptr))
                         .get();
                 r->reset();
             } else {
-                r = __M_outstanding_task_list.emplace_front(new task_t(this))
+                r = __M_outstanding_task_list.emplace_back(new task_t(this))
                         .get();
             }
             r->__M_avail = false;
-            r->__M_location = __M_outstanding_task_list.begin();
             return r;
         } catch (const std::exception&) {
             rethrow_with_fatal(std::make_exception_ptr(
@@ -133,7 +146,9 @@ class io_context : CHXNET_NONCOPYABLE {
     }
 
     void release(task_t* task) noexcept(true) {
-        auto loc = task->__M_location;
+        auto loc = std::find_if(__M_outstanding_task_list.begin(),
+                                __M_outstanding_task_list.end(),
+                                [&](const auto& p) { return p.get() == task; });
         std::unique_ptr ptr = std::move(*loc);
         __M_outstanding_task_list.erase(loc);
         if (__M_task_pool.size() < 256) {
@@ -159,15 +174,6 @@ class io_context : CHXNET_NONCOPYABLE {
         }
     }
 
-    [[nodiscard]] io_uring_sqe*
-    try_get_sqe(task_t* task = nullptr) noexcept(true) {
-        auto* sqe = io_uring_get_sqe(&__M_ring);
-        if (sqe) {
-            io_uring_sqe_set_data(sqe, task);
-        }
-        return sqe;
-    }
-
     [[nodiscard]] std::pair<io_uring_sqe*, task_t*> get() {
         std::pair<io_uring_sqe*, task_t*> _r{get_sqe(), acquire()};
         io_uring_sqe_set_data(_r.first, _r.second);
@@ -190,15 +196,62 @@ class io_context : CHXNET_NONCOPYABLE {
                                   CompletionToken&& completion_token);
 
   private:
-    void __advance(unsigned int nr) noexcept(true) {
-        io_uring_cq_advance(&__M_ring, nr);
+    void __handle_task(io_uring_cqe* cqe) {
+        task_t* task = static_cast<task_t*>(io_uring_cqe_get_data(cqe));
+        task->__M_res = cqe->res;
+        if (task->__M_notif) {
+            // if task is aware of notif, or is persist
+            task->__M_token(task);
+        } else {
+            assert(!(cqe->flags & IORING_CQE_F_MORE));
+            if (cqe->res < 0) {
+                assign_ec(task->__M_ec, -cqe->res);
+            } else {
+                task->__M_ec.clear();
+            }
+            try {
+                task->__M_token(task);
+            } catch (const std::exception&) {
+                release(task);
+                std::rethrow_exception(std::current_exception());
+            }
+            release(task);
+        }
+    }
+    void __handle_msg() {
+        if (!__M_msg_list_empty.load(std::memory_order_relaxed)) {
+            std::vector<std::unique_ptr<message_base>> v;
+            {
+                std::lock_guard lg(__M_msg_list_mutex);
+                v = std::move(__M_msg_list);
+                __M_msg_list_empty.store(true, std::memory_order_relaxed);
+            }
+            std::size_t i = 0;
+            try {
+                for (; i < v.size(); ++i) {
+                    (*v[i])(this);
+                    v[i].reset();
+                }
+            } catch (const std::exception& ex) {
+                if (i + 1 < v.size()) {
+                    std::lock_guard lg(__M_msg_list_mutex);
+                    __M_msg_list.insert(
+                        __M_msg_list.end(),
+                        std::make_move_iterator(v.begin() + i + 1),
+                        std::make_move_iterator(v.end()));
+                    __M_msg_list_empty.store(false, std::memory_order_relaxed);
+                }
+            }
+        }
     }
 
     void __run() {
         while (outstanding_tasks()) {
             if (int r = io_uring_submit_and_wait(&__M_ring, 1); r < 0) {
-                rethrow_with_fatal(std::make_exception_ptr(
-                    __CHXNET_MAKE_EX_CSTR("io_uring_submit_and_wait failed")));
+                // rethrow_with_fatal(std::make_exception_ptr(
+                //     __CHXNET_MAKE_EX_CSTR("io_uring_submit_and_wait
+                //     failed")));
+                continue;
             }
 
             io_uring_cqe* cqe;
@@ -215,50 +268,29 @@ class io_context : CHXNET_NONCOPYABLE {
             io_uring_for_each_cqe(&__M_ring, head, cqe) {
                 ++nr;
                 if (cqe->user_data) {
-                    assert(!(cqe->flags & IORING_CQE_F_NOTIF));
-                    auto* task =
-                        static_cast<task_t*>(io_uring_cqe_get_data(cqe));
-
-                    if (task->__M_notif && task->__M_persist) {
-                        // if task is aware of notif
-                        try {
-                            task->__M_token(task);
-                        } catch (const std::exception&) {
-                            release(task);
-                            std::rethrow_exception(std::current_exception());
+                    void* data = io_uring_cqe_get_data(cqe);
+                    if (data == static_cast<void*>(&__M_interrupter)) {
+                        if (cqe->res > 0) {
+                            __M_interrupter.do_read(get_sqe(),
+                                                    &__M_interrupter);
+                            __handle_msg();
+                        } else {
+                            rethrow_with_fatal(
+                                std::make_exception_ptr(strerror(-cqe->res)));
                         }
                     } else {
-                        // if this cqe is not notif
-                        // res of notif is zero
-                        if ((cqe->flags & IORING_CQE_F_NOTIF) == 0) {
-                            task->__M_res = cqe->res;
-                            if (cqe->res < 0) {
-                                detail::assign_ec(task->__M_ec, -cqe->res);
-                            } else {
-                                task->__M_ec.clear();
-                            }
-                        }
-                        // if there is no more cqe
-                        if ((cqe->flags & IORING_CQE_F_MORE) == 0) {
-                            bool _need_release = !task->__M_persist;
-                            try {
-                                task->__M_token(task);
-                            } catch (const std::exception&) {
-                                release(task);
-                                std::rethrow_exception(
-                                    std::current_exception());
-                            }
-                            if (_need_release) {
-                                release(task);
-                            }
-                        }
+                        __handle_task(cqe);
                     }
                 }
                 if (is_stopped()) {
                     return;
                 }
+                if (nr.nr > __M_ring_sz) {
+                    break;
+                }
             }
         }
+        __handle_msg();
     }
 
     void __async_cancel_all() {
@@ -279,28 +311,22 @@ class io_context : CHXNET_NONCOPYABLE {
 
   public:
     io_context(std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(task_t))
-    /*: __M_static_task_sz(static_task_sz)*/ {
-        // __M_mt_closed.test_and_set(std::memory_order_acquire);
-
+        : __M_ring_sz(static_task_sz > 4096 ? static_task_sz : 4096) {
         struct io_uring_params params = {};
-        // params.flags |= IORING_SETUP_SQPOLL;
         params.features |= IORING_FEAT_FAST_POLL | IORING_FEAT_CQE_SKIP;
-        if (int r = io_uring_queue_init_params(
-                static_task_sz > 4096 ? static_task_sz : 4096, &__M_ring,
-                &params);
+        if (int r = io_uring_queue_init_params(__M_ring_sz, &__M_ring, &params);
             r != 0) {
             rethrow_with_fatal(std::make_exception_ptr(
                 __CHXNET_MAKE_EX_CSTR("io_uring_queue_init_params failed")));
         }
+        __M_interrupter.do_read(get_sqe(), &__M_interrupter);
     }
 
     /**
      * @brief Destroy the io_context object.
      *
      */
-    ~io_context() {
-        io_uring_queue_exit(&__M_ring);
-    }
+    ~io_context() { io_uring_queue_exit(&__M_ring); }
     /**
      * @brief Start waiting for async tasks to be completed.
      *
@@ -346,8 +372,32 @@ class io_context : CHXNET_NONCOPYABLE {
     template <typename CompletionToken>
     decltype(auto) async_nop(CompletionToken&& completion_token);
 
-    std::size_t outstanding_tasks() const noexcept(true) {
+    template <typename Fn> void post(Fn&& fn) {
+        using __decay_t = std::decay_t<Fn>;
+        struct impl : message_base, __decay_t {
+            impl(Fn&& fn) : __decay_t(std::forward<Fn>(fn)) {}
+
+            void operator()(io_context* ctx) override {
+                if constexpr (std::is_invocable_v<Fn&&, io_context*>) {
+                    __decay_t::operator()(ctx);
+                } else {
+                    __decay_t::operator()();
+                }
+            }
+        };
+        std::unique_ptr<message_base> msg =
+            std::make_unique<impl>(std::forward<Fn>(fn));
+        std::lock_guard lg(__M_msg_list_mutex);
+        __M_msg_list.emplace_back(std::move(msg));
+        __M_msg_list_empty.store(false, std::memory_order_relaxed);
+    }
+    void interrupt() const { __M_interrupter.do_interrupt(); }
+
+    constexpr std::size_t outstanding_tasks() const noexcept(true) {
         return __M_outstanding_task_list.size();
+    }
+    constexpr int native_handler() const noexcept(true) {
+        return __M_ring.ring_fd;
     }
 };
 }  // namespace chx::net

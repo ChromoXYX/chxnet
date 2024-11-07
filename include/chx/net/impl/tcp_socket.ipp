@@ -99,7 +99,7 @@ class tcp::socket : public socket_base {
                       endpoint.address().is_v4()
                           ? sizeof(sockaddr_in)
                           : sizeof(sockaddr_in6)) == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
     }
     void connect(const ip::tcp::endpoint& endpoint) {
@@ -175,7 +175,7 @@ class tcp::socket : public socket_base {
             net::buffer(std::forward<ConstBuffer>(const_buffer));
         ssize_t r = 0;
         if (r = ::write(native_handler(), buf.data(), buf.size()); r == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
         return r;
     }
@@ -230,7 +230,7 @@ class tcp::socket : public socket_base {
             net::buffer(std::forward<MutableBuffer>(mutable_buffer));
         ssize_t r = 0;
         if (r = ::read(native_handler(), buf.data(), buf.size()); r == -1) {
-            net::detail::assign_ec(ec, errno);
+            net::assign_ec(ec, errno);
         }
         return r;
     }
