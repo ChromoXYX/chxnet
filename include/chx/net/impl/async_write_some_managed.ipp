@@ -40,7 +40,8 @@ struct chx::net::detail::async_operation<
     }
 
     template <typename Stream, typename Container, typename CntlType = void>
-    struct operation : CHXNET_NONCOPYABLE {
+    struct operation {
+        CHXNET_NONCOPYABLE
         Stream stream;
         Container container;
 
@@ -133,7 +134,8 @@ struct chx::net::detail::async_operation<
     }
 
     template <typename Stream, typename Container, typename CntlType = void>
-    struct operation : CHXNET_NONCOPYABLE {
+    struct operation {
+        CHXNET_NONCOPYABLE
         Stream stream;
         Container container;
         decltype(generate_iovec(container)) iov;

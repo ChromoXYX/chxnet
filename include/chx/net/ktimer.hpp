@@ -29,7 +29,9 @@ class bad_ktimer : public exception {
     using exception::exception;
 };
 
-class ktimer : CHXNET_NONCOPYABLE {
+class ktimer {
+    CHXNET_NONCOPYABLE
+
     io_context* __M_ctx;
     int __M_fd = -1;
 

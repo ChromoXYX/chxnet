@@ -26,7 +26,8 @@ struct this_context_t {
 inline constexpr struct this_context_t this_context = {};
 
 namespace detail::coroutine {
-class task_impl : CHXNET_NONCOPYABLE {
+class task_impl {
+    CHXNET_NONCOPYABLE
     struct promise {
         ~promise() {
             if (__M_then)
@@ -128,7 +129,8 @@ template <> struct nop_future_impl<void> {
     }
 };
 
-template <typename T> struct future_impl : CHXNET_NONCOPYABLE {
+template <typename T> struct future_impl {
+    CHXNET_NONCOPYABLE
     ~future_impl() {
         if (h) {
             // h.promise().disconnect();
@@ -311,10 +313,14 @@ struct awaitable_then_base {
     virtual ~awaitable_then_base() = default;
 };
 
-template <typename T> struct [[nodiscard]] awaitable_impl : CHXNET_NONCOPYABLE {
+template <typename T> struct [[nodiscard]] awaitable_impl {
+    CHXNET_NONCOPYABLE
+
     using value_type = T;
 
-    struct view : CHXNET_NONCOPYABLE {
+    struct view {
+        CHXNET_NONCOPYABLE
+
         awaitable_impl* pimpl = nullptr;
         std::coroutine_handle<> h = {};
 

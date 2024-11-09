@@ -5,7 +5,9 @@
 #include <sys/mman.h>
 
 namespace chx::net {
-class mapped_file : CHXNET_NONCOPYABLE {
+class mapped_file {
+    CHXNET_NONCOPYABLE
+
     void* __M_ptr = nullptr;
     std::size_t __M_sz = 0;
 

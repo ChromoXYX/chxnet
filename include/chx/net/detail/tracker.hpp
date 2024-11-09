@@ -95,8 +95,8 @@ struct counter_block {
     }
 
     struct owner_guard
-        : CHXNET_NONCOPYABLE,
-          __guard_base<&counter_block::owner_inc, &counter_block::owner_exit> {
+        : __guard_base<&counter_block::owner_inc, &counter_block::owner_exit> {
+        CHXNET_NONCOPYABLE
         using __guard_base::__guard_base;
 
         template <typename Object> friend struct enable_weak_from_this;
@@ -162,7 +162,9 @@ template <typename Object> class weak_ptr {
         : __M_ptr(obj), __M_guard(owner) {}
 };
 
-template <typename Object> struct enable_weak_from_this : CHXNET_NONCOPYABLE {
+template <typename Object> struct enable_weak_from_this {
+    CHXNET_NONCOPYABLE
+
     enable_weak_from_this() : owner(new counter_block) {}
 
     constexpr weak_ptr<Object> weak_from_this() noexcept(true) {

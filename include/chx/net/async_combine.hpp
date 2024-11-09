@@ -36,8 +36,9 @@ template <typename Operation, typename CompletionToken,
 struct async_combine_impl
     : Operation::template rebind<
           async_combine_impl<Operation, CompletionToken, EnableReferenceCount>>,
-      CompletionToken,
-      CHXNET_NONCOPYABLE {
+      CompletionToken {
+    CHXNET_NONCOPYABLE
+
     using attribute_type = attribute<async_token>;
     using rebind_operation =
         typename Operation::template rebind<async_combine_impl>;
@@ -137,7 +138,9 @@ struct async_combine_impl
         return rebind_operation::operator()(*this, std::forward<Ts>(ts)...);
     }
 
-    struct next_guard : CHXNET_NONCOPYABLE {
+    struct next_guard {
+        CHXNET_NONCOPYABLE
+
         async_combine_impl* self;
         io_context::task_t* task = nullptr;
 
@@ -228,8 +231,9 @@ struct async_combine_impl
         -> next_then_2<std::remove_reference_t<FinalFunctor>,
                        std::remove_reference_t<Callable>>;
 
-    template <typename BindCompletionToken>
-    struct next_then_1 : CHXNET_NONCOPYABLE {
+    template <typename BindCompletionToken> struct next_then_1 {
+        CHXNET_NONCOPYABLE
+
         using attribute_type = attribute<async_token>;
 
         BindCompletionToken bind_completion_token;
@@ -259,7 +263,9 @@ struct async_combine_impl
     next_then_1(async_combine_impl*, BindCompletionToken&&)
         -> next_then_1<std::remove_reference_t<BindCompletionToken&&>>;
 
-    template <typename _CT> struct next_then_0 : CHXNET_NONCOPYABLE {
+    template <typename _CT> struct next_then_0 {
+        CHXNET_NONCOPYABLE
+
         using attribute_type = attribute<async_token>;
 
         async_combine_impl* self;

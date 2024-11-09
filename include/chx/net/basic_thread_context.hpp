@@ -4,8 +4,9 @@
 #include "./detail/interrupter.hpp"
 
 namespace chx::net {
-template <typename MessageQueue>
-class basic_thread_context : CHXNET_NONCOPYABLE, MessageQueue {
+template <typename MessageQueue> class basic_thread_context : MessageQueue {
+    CHXNET_NONCOPYABLE
+
     io_uring __M_ring;
     detail::interrupter __M_interrupter;
 

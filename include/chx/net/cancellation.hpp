@@ -31,7 +31,9 @@ struct cancellation_base {
     virtual ~cancellation_base() = default;
 };
 }  // namespace detail
-struct cancellation_signal : CHXNET_NONCOPYABLE {
+struct cancellation_signal {
+    CHXNET_NONCOPYABLE
+
     template <typename BindCompletionToken>
     friend struct detail::cancellation_ops;
     friend struct detail::cancellation_assign;

@@ -9,8 +9,12 @@
 namespace chx::net::detail {
 struct mm {
   private:
-    struct blocks : CHXNET_NONCOPYABLE {
-        struct block : CHXNET_NONCOPYABLE {
+    struct blocks {
+        CHXNET_NONCOPYABLE
+
+        struct block {
+            CHXNET_NONCOPYABLE
+
             blocks* parent = nullptr;
             block* next = nullptr;
             alignas(std::max_align_t) unsigned char buffer[];

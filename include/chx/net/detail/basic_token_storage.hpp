@@ -65,7 +65,8 @@ struct dynamic_allocator {
 template <typename Signature, std::size_t BufferSize = 48,
           std::size_t Align = alignof(std::max_align_t),
           typename Allocator = CHXNET_TOKEN_STORAGE_ALLOCATOR>
-class basic_token_storage : CHXNET_NONCOPYABLE, Allocator {
+class basic_token_storage : Allocator {
+    CHXNET_NONCOPYABLE
   public:
     using signature_type = Signature;
 
@@ -82,8 +83,9 @@ class basic_token_storage : CHXNET_NONCOPYABLE, Allocator {
     };
 
     template <typename> struct __base_impl;
-    template <typename... _Ts>
-    struct __base_impl<std::tuple<_Ts...>> : CHXNET_NONCOPYABLE {
+    template <typename... _Ts> struct __base_impl<std::tuple<_Ts...>> {
+        CHXNET_NONCOPYABLE
+
         __base_impl() = default;
         virtual ~__base_impl() noexcept(true) = default;
 

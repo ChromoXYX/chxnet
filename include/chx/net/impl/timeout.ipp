@@ -9,7 +9,8 @@ struct io_uring_timeout {};
 }  // namespace tags
 
 template <> struct async_operation<tags::io_uring_timeout> {
-    template <typename CompletionToken> struct wrapper2 : CHXNET_NONCOPYABLE {
+    template <typename CompletionToken> struct wrapper2 {
+        CHXNET_NONCOPYABLE
         CompletionToken completion_token;
         cancellation_signal& handler;
 

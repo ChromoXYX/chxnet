@@ -3,8 +3,8 @@
 #include "../exception.hpp"
 #include "../error_code.hpp"
 #include "../detail/noncopyable.hpp"
-#include "../detail/basic_token_storage.hpp"
 
+#include <cstdint>
 #include <cassert>
 #include <functional>
 #include <openssl/err.h>
@@ -24,7 +24,9 @@ inline std::string last_error() {
 }
 }  // namespace detail
 
-class context : CHXNET_NONCOPYABLE {
+class context {
+    CHXNET_NONCOPYABLE
+
     SSL_CTX* __M_ssl_ctx = nullptr;
     std::function<std::string(std::size_t, int)> __M_passwd_fn;
     std::function<std::string_view(const std::vector<std::string_view>&)>

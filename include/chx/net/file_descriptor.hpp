@@ -6,7 +6,9 @@
 #include "./impl/general_async_close.hpp"
 
 namespace chx::net {
-class file_descriptor : CHXNET_NONCOPYABLE {
+class file_descriptor {
+    CHXNET_NONCOPYABLE
+
     template <typename> friend struct detail::async_operation;
 
     io_context* __M_ctx;

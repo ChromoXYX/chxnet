@@ -6,7 +6,8 @@
 #include <sys/signalfd.h>
 
 namespace chx::net {
-class signal : CHXNET_NONCOPYABLE {
+class signal {
+    CHXNET_NONCOPYABLE
   protected:
     file_descriptor __M_fd;
 

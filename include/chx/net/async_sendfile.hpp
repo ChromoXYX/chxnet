@@ -37,7 +37,9 @@ template <> struct async_operation<tags::async_sendfile_splice> {
 
 template <> struct async_operation<tags::async_sendfile> {
     template <typename File, typename StreamRef, typename CntlType = void>
-    struct operation : CHXNET_NONCOPYABLE {
+    struct operation {
+        CHXNET_NONCOPYABLE
+
         template <typename T> using rebind = operation<File, StreamRef, T>;
 
         File file;

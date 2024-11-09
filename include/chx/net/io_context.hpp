@@ -36,7 +36,8 @@ struct use_delivery {};
 struct interrupter {};
 }  // namespace tags
 
-struct task_declare::task_decl : CHXNET_NONCOPYABLE {
+struct task_declare::task_decl {
+    CHXNET_NONCOPYABLE
     struct cancellation_controller_base {
         virtual void operator()(cancellation_signal&) = 0;
         virtual void cancel(task_decl*) = 0;
@@ -90,7 +91,9 @@ struct task_declare::task_decl : CHXNET_NONCOPYABLE {
 };
 }  // namespace detail
 
-class io_context : CHXNET_NONCOPYABLE {
+class io_context {
+    CHXNET_NONCOPYABLE
+
     template <typename Tag> friend struct detail::async_operation;
 
   public:

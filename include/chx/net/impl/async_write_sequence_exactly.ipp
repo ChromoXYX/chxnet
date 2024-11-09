@@ -20,7 +20,8 @@ template <> struct async_operation<tags::write_seq_exactly> {
     }
 
     template <typename Stream, typename RealSequence>
-    struct exactly_seq_managed : CHXNET_NONCOPYABLE {
+    struct exactly_seq_managed {
+        CHXNET_NONCOPYABLE
         template <typename CntlType> using rebind = exactly_seq_managed;
         using __toolkit = async_operation<tags::async_write_seq>;
 

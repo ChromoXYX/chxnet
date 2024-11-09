@@ -12,7 +12,9 @@ struct ssl_write_seq {};
 template <>
 struct chx::net::detail::async_operation<
     chx::net::ssl::detail::tags::ssl_write_seq> {
-    template <typename Socket, typename IovArr> struct op : CHXNET_NONCOPYABLE {
+    template <typename Socket, typename IovArr> struct op {
+        CHXNET_NONCOPYABLE
+
         template <typename CntlType> using rebind = op;
 
         ssl::stream<Socket>& self;
