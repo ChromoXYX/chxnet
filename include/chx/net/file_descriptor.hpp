@@ -4,6 +4,7 @@
 #include "./buffer.hpp"
 #include "./detail/sfinae_placeholder.hpp"
 #include "./impl/general_async_close.hpp"
+#include "./buffer_sequence.hpp"
 
 namespace chx::net {
 class file_descriptor {
@@ -61,11 +62,18 @@ class file_descriptor {
         detail::sfinae_placeholder<
             std::enable_if_t<detail::is_mutable_buffer<MutableBuffer>::value>>
             _ = net::detail::sfinae);
+
     template <typename ConstBuffer, typename CompletionToken>
     decltype(auto) async_write_some(
         ConstBuffer&& const_buffer, CompletionToken&& completion_token,
         detail::sfinae_placeholder<
             std::enable_if_t<detail::is_const_buffer<ConstBuffer>::value>>
+            _ = net::detail::sfinae);
+    template <typename ConstBufferSequence, typename CompletionToken>
+    decltype(auto) async_write_some(
+        ConstBufferSequence&& const_buffer, CompletionToken&& completion_token,
+        detail::sfinae_placeholder<std::enable_if_t<is_const_buffer_sequence<
+            std::remove_reference_t<ConstBufferSequence>>::value>>
             _ = net::detail::sfinae);
 
     template <typename StreamIn, typename CompletionToken>
@@ -80,14 +88,6 @@ class file_descriptor {
             detail::async_token_bind<const std::error_code&>(
                 std::forward<CompletionToken>(completion_token)));
     }
-};
-class file_descriptor_view : public file_descriptor {
-  public:
-    constexpr file_descriptor_view(io_context& ctx, int fd = -1) noexcept(true)
-        : file_descriptor(ctx, fd) {}
-    file_descriptor_view(file_descriptor_view&& other) noexcept(true)
-        : file_descriptor(std::move(other)) {}
-    ~file_descriptor_view() { release(); }
 };
 
 template <typename FileDescriptor, typename StreamIn, typename CompletionToken>

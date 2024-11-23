@@ -1,7 +1,6 @@
 #pragma once
 
 #include "./ip.hpp"
-#include "./error_code.hpp"
 #include "./basic_socket.hpp"
 
 namespace chx::net::ip {

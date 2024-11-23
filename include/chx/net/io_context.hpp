@@ -7,6 +7,7 @@
 #include <memory>
 #include <queue>
 #include <algorithm>
+#include <mutex>
 
 #include "./detail/task_declare.hpp"
 #include "./detail/basic_token_storage.hpp"
@@ -70,7 +71,8 @@ struct task_declare::task_decl {
 
     std::unique_ptr<cancellation_controller_base> __M_custom_cancellation;
 
-    detail::basic_token_storage<int(task_decl*), CHXNET_TOKEN_STORAGE_SIZE>
+    detail::basic_token_storage<int(task_decl*), CHXNET_TOKEN_STORAGE_SIZE,
+                                alignof(std::max_align_t)>
         __M_token;
 
     void reset() noexcept(true) {
@@ -396,7 +398,7 @@ class io_context {
     }
     void interrupt() const { __M_interrupter.do_interrupt(); }
 
-    constexpr std::size_t outstanding_tasks() const noexcept(true) {
+    std::size_t outstanding_tasks() const noexcept(true) {
         return __M_outstanding_task_list.size();
     }
     constexpr int native_handler() const noexcept(true) {

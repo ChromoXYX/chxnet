@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./file_descriptor.hpp"
+#include "./detail/remove_rvalue_reference.hpp"
 
 #include <sys/mman.h>
 
@@ -148,6 +149,40 @@ template <typename Container> class carrier {
     constexpr const value_type* data() const noexcept(true) {
         return static_cast<const unsigned char*>(buffer(__M_c).data()) +
                __M_offset;
+    }
+};
+
+class vcarrier {
+    struct __c {
+        virtual std::size_t size() const noexcept(true) = 0;
+        virtual const void* data() const noexcept(true) = 0;
+        virtual ~__c() = default;
+    };
+    std::unique_ptr<__c> __M_c;
+
+    vcarrier(std::unique_ptr<__c> p) noexcept(true) : __M_c(std::move(p)) {}
+
+  public:
+    vcarrier(vcarrier&&) = default;
+
+    std::size_t size() const noexcept(true) {
+        return __M_c ? __M_c->size() : 0;
+    }
+    const void* data() const noexcept(true) {
+        return __M_c ? __M_c->data() : nullptr;
+    }
+
+    template <typename T> static vcarrier create(T&& t) {
+        struct impl : __c {
+            typename detail::remove_rvalue_reference<T&&>::type r;
+            impl(T&& t) : r(std::forward<T>(t)) {}
+
+            std::size_t size() const noexcept(true) override {
+                return r.size();
+            }
+            const void* data() const noexcept(true) { return r.data(); }
+        };
+        return {std::make_unique<impl>(std::forward<T>(t))};
     }
 };
 }  // namespace chx::net

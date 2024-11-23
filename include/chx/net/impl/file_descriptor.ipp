@@ -3,11 +3,12 @@
 #include "../file_descriptor.hpp"
 
 #include "../async_combine.hpp"
+#include "./general_io.hpp"
 
 namespace chx::net::detail {
 namespace tags {
 struct fd_read {};
-struct fd_write {};
+// struct fd_write {};
 struct fd_transfer {};
 }  // namespace tags
 
@@ -46,26 +47,6 @@ template <> struct async_operation<tags::fd_read> {
                     token(self->__M_res != 0 ? self->__M_ec
                                              : make_ec(errc::eof),
                           self->__M_res);
-                    return 0;
-                },
-                completion_token)),
-            completion_token);
-    }
-};
-template <> struct async_operation<tags::fd_write> {
-    template <typename CompletionToken>
-    decltype(auto) operator()(file_descriptor* fd,
-                              const const_buffer& const_buffer,
-                              CompletionToken&& completion_token) {
-        auto [sqe, task] = fd->get_associated_io_context().get();
-
-        io_uring_prep_write(sqe, fd->native_handler(), const_buffer.data(),
-                            const_buffer.size(), 0);
-        return async_token_init(
-            task->__M_token.emplace(async_token_generate(
-                task,
-                [](auto& token, io_context::task_t* self) mutable -> int {
-                    token(self->__M_ec, self->__M_res);
                     return 0;
                 },
                 completion_token)),
@@ -175,9 +156,22 @@ decltype(auto) chx::net::file_descriptor::async_write_some(
     ConstBuffer&& const_buffer, CompletionToken&& completion_token,
     detail::sfinae_placeholder<
         std::enable_if_t<detail::is_const_buffer<ConstBuffer>::value>>) {
-    return detail::async_operation<detail::tags::fd_write>()(
-        this, const_buffer,
-        detail::async_token_bind<const std::error_code&, std::size_t>(
+    return net::detail::async_operation<net::detail::tags::simple_write>()(
+        &get_associated_io_context(), this, std::forward<ConstBuffer>(buffer),
+        net::detail::async_token_bind<const std::error_code&, std::size_t>(
+            std::forward<CompletionToken>(completion_token)));
+}
+
+template <typename ConstBufferSequence, typename CompletionToken>
+decltype(auto) chx::net::file_descriptor::async_write_some(
+    ConstBufferSequence&& const_buffer_sequence,
+    CompletionToken&& completion_token,
+    detail::sfinae_placeholder<std::enable_if_t<is_const_buffer_sequence<
+        std::remove_reference_t<ConstBufferSequence>>::value>>) {
+    return net::detail::async_operation<net::detail::tags::writev>()(
+        &get_associated_io_context(), this,
+        std::forward<ConstBufferSequence>(const_buffer_sequence),
+        net::detail::async_token_bind<const std::error_code&, std::size_t>(
             std::forward<CompletionToken>(completion_token)));
 }
 

@@ -2,6 +2,7 @@
 
 #include <bits/types/struct_iovec.h>
 #include <cstddef>
+#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -19,6 +20,17 @@ struct has_data_impl {
 template <typename T>
 using is_const_data =
     std::is_const<std::remove_pointer_t<decltype(std::declval<T>().data())>>;
+
+template <typename T>
+struct pointer_difference
+    : std::integral_constant<
+          std::size_t, sizeof(typename std::pointer_traits<T>::element_type)> {
+};
+template <>
+struct pointer_difference<void*> : std::integral_constant<std::size_t, 1> {};
+template <>
+struct pointer_difference<const void*>
+    : std::integral_constant<std::size_t, 1> {};
 }  // namespace detail
 
 /**
@@ -54,16 +66,17 @@ class mutable_buffer {
         typename Container,
         typename = std::enable_if_t<
             std::is_constructible_v<detail::has_data_and_size_impl, Container>>,
-        typename = std::enable_if_t<!std::is_const<Container>::value>,
+        // typename = std::enable_if_t<!std::is_const<Container>::value>,
         typename = std::enable_if_t<!detail::is_const_data<Container>::value>>
     explicit mutable_buffer(Container& b) noexcept(true)
         : __M_data(b.data()),
-          __M_sz(b.size() * sizeof(typename Container::value_type)) {}
+          __M_sz(b.size() *
+                 detail::pointer_difference<decltype(b.data())>::value) {}
     template <
         typename Container,
         typename = std::enable_if_t<
             std::is_constructible_v<detail::has_data_impl, Container>>,
-        typename = std::enable_if_t<!std::is_const<Container>::value>,
+        // typename = std::enable_if_t<!std::is_const<Container>::value>,
         typename = std::enable_if_t<!detail::is_const_data<Container>::value>>
     explicit mutable_buffer(Container& b, std::size_t size) noexcept(true)
         : __M_data(b.data()), __M_sz(size) {}
@@ -108,7 +121,8 @@ class const_buffer {
                   detail::has_data_and_size_impl, Container>>>
     explicit const_buffer(const Container& b) noexcept(true)
         : __M_data(b.data()),
-          __M_sz(b.size() * sizeof(typename Container::value_type)) {}
+          __M_sz(b.size() *
+                 detail::pointer_difference<decltype(b.data())>::value) {}
     template <typename Container,
               typename = std::enable_if_t<
                   std::is_constructible_v<detail::has_data_impl, Container>>>

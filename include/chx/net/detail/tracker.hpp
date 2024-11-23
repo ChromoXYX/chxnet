@@ -147,6 +147,8 @@ template <typename Object> class weak_ptr {
     constexpr Object* get() const noexcept(true) { return __M_ptr; }
     constexpr Object& operator*() const noexcept(true) { return *__M_ptr; }
 
+    constexpr Object* lock() const noexcept(true) { return __M_ptr; }
+
     constexpr operator bool() const noexcept(true) { return !expired(); }
 
     constexpr bool expired() const noexcept(true) {

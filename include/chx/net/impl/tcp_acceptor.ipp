@@ -1,21 +1,9 @@
 #pragma once
 
 #include "../tcp.hpp"
-#include "./tcp_socket.ipp"
+#include "./general_ip_io.hpp"
 
 #include "../async_token.hpp"
-
-namespace chx::net::ip::detail::tags {
-struct async_accept {};
-}  // namespace chx::net::ip::detail::tags
-
-template <>
-struct chx::net::detail::async_operation<
-    chx::net::ip::detail::tags::async_accept> {
-    template <typename CompletionToken>
-    decltype(auto) operator()(io_context* ctx, ip::tcp::acceptor* acceptor,
-                              CompletionToken&& completion_token);
-};
 
 namespace chx::net::ip {
 class tcp::acceptor : public socket_base {
@@ -107,41 +95,11 @@ class tcp::acceptor : public socket_base {
      */
     template <typename CompletionToken>
     decltype(auto) async_accept(CompletionToken&& token) {
-        return net::detail::async_operation<detail::tags::async_accept>()(
-            &get_associated_io_context(), this,
-            net::detail::async_token_bind<const std::error_code&,
-                                          ip::tcp::socket>(
-                std::forward<CompletionToken>(token)));
+        return net::detail::async_operation<ip::detail::tags::async_accept>()
+            .f<tcp>(&get_associated_io_context(), this,
+                    net::detail::async_token_bind<const std::error_code&,
+                                                  ip::tcp::socket>(
+                        std::forward<CompletionToken>(token)));
     }
 };
 }  // namespace chx::net::ip
-
-inline static int accept_count = 0;
-
-template <typename CompletionToken>
-auto chx::net::detail::
-    async_operation<chx::net::ip::detail::tags::async_accept>::operator()(
-        io_context* ctx, ip::tcp::acceptor* acceptor,
-        CompletionToken&& completion_token) -> decltype(auto) {
-    io_context::task_t* task = ctx->acquire();
-    auto* sqe = ctx->get_sqe();
-    io_uring_sqe_set_data(sqe, task);
-    io_uring_prep_accept(sqe, acceptor->native_handler(), nullptr, nullptr, 0);
-
-    task->__M_additional = reinterpret_cast<std::uint64_t>(acceptor);
-    return detail::async_token_init(
-        task->__M_token.emplace(detail::async_token_generate(
-            task,
-            [](auto& completion_token,
-               io_context::task_t* self) mutable -> int {
-                auto* acceptor =
-                    reinterpret_cast<ip::tcp::acceptor*>(self->__M_additional);
-                completion_token(
-                    self->__M_ec,
-                    ip::tcp::socket(acceptor->get_associated_io_context(),
-                                    self->__M_res > 0 ? self->__M_res : -1));
-                return 0;
-            },
-            std::forward<CompletionToken>(completion_token))),
-        std::forward<CompletionToken>(completion_token));
-}

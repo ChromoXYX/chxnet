@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../async_read_until.hpp"
-#include "./general_ip_socket_io.hpp"
+#include "./general_io.hpp"
 
 template <typename Stream, typename DynamicBuffer, typename StopCondition,
           typename CompletionToken>

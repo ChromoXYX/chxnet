@@ -1,18 +1,16 @@
 #pragma once
 
 #include <linux/limits.h>
-#include <string_view>
 #include <type_traits>
 
 #include "../tcp.hpp"
 
-#include "./general_ip_socket_io.hpp"
+#include "./general_io.hpp"
+#include "./general_ip_io.hpp"
 
 #ifndef CHXNET_SPLICE_SIZE
 #define CHXNET_SPLICE_SIZE 65536
 #endif
-
-namespace chx::net::ip::detail::tags {}  // namespace chx::net::ip::detail::tags
 
 namespace chx::net::ip {
 class tcp::socket : public socket_base {
@@ -131,7 +129,7 @@ class tcp::socket : public socket_base {
             std::enable_if_t<is_const_buffer_sequence<
                 std::remove_reference_t<ConstBufferSequence>>::value>>
             _ = net::detail::sfinae) {
-        return net::detail::async_operation<detail::tags::writev>()(
+        return net::detail::async_operation<net::detail::tags::writev>()(
             &get_associated_io_context(), this,
             std::forward<ConstBufferSequence>(const_buffer_sequence),
             net::detail::async_token_bind<const std::error_code&, std::size_t>(
@@ -157,7 +155,7 @@ class tcp::socket : public socket_base {
         net::detail::sfinae_placeholder<
             std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
             _ = net::detail::sfinae) {
-        return net::detail::async_operation<detail::tags::simple_write>()(
+        return net::detail::async_operation<net::detail::tags::simple_write>()(
             &get_associated_io_context(), this,
             std::forward<ConstBuffer>(buffer),
             net::detail::async_token_bind<const std::error_code&, std::size_t>(
@@ -213,7 +211,7 @@ class tcp::socket : public socket_base {
                     net::detail::sfinae_placeholder<std::enable_if_t<
                         net::detail::is_mutable_buffer<MutableBuffer>::value>>
                         _ = net::detail::sfinae) {
-        return net::detail::async_operation<detail::tags::simple_read>()(
+        return net::detail::async_operation<net::detail::tags::simple_read>()(
             &get_associated_io_context(), this,
             std::forward<MutableBuffer>(buffer),
             net::detail::async_token_bind<const std::error_code&, std::size_t>(
@@ -269,7 +267,7 @@ class tcp::socket : public socket_base {
             std::enable_if_t<is_mutable_buffer_sequence<
                 std::remove_reference_t<MutableBufferSequence>>::value>>
             _ = net::detail::sfinae) {
-        return net::detail::async_operation<detail::tags::readv>()(
+        return net::detail::async_operation<net::detail::tags::readv>()(
             &get_associated_io_context(), this,
             std::forward<MutableBufferSequence>(mutable_buffer_sequence),
             net::detail::async_token_bind<const std::error_code&, std::size_t>(

@@ -81,8 +81,8 @@ template <> struct async_operation<tags::async_write_seq> {
         //     value_type_check<vt>::value>{};
         // } else {
         if constexpr (is_buffer<std::decay_t<T>>::value) {
-            using vt = typename std::decay_t<T>::value_type;
-            return std::integral_constant<bool, value_type_check<vt>::value>{};
+            return value_type_check<typename std::pointer_traits<
+                decltype(std::data(std::declval<T>()))>::element_type>();
         } else {
             return std::false_type{};
         }
