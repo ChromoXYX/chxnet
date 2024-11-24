@@ -164,6 +164,7 @@ class vcarrier {
 
   public:
     vcarrier(vcarrier&&) = default;
+    vcarrier& operator=(vcarrier&&) = default;
 
     std::size_t size() const noexcept(true) {
         return __M_c ? __M_c->size() : 0;
