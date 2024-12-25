@@ -101,7 +101,7 @@ template <>
 struct chx::net::detail::async_operation<
     chx::net::ip::detail::tags::async_accept> {
     template <typename Protocol, typename CompletionToken>
-    decltype(auto) f(io_context* ctx, Protocol::acceptor* acceptor,
+    decltype(auto) f(io_context* ctx, typename Protocol::acceptor* acceptor,
                      CompletionToken&& completion_token) {
         io_context::task_t* task = ctx->acquire();
         auto* sqe = ctx->get_sqe();
@@ -115,8 +115,9 @@ struct chx::net::detail::async_operation<
                 task,
                 [](auto& completion_token,
                    io_context::task_t* self) mutable -> int {
-                    auto* acceptor = reinterpret_cast<Protocol::acceptor*>(
-                        self->__M_additional);
+                    auto* acceptor =
+                        reinterpret_cast<typename Protocol::acceptor*>(
+                            self->__M_additional);
                     completion_token(
                         self->__M_ec,
                         typename Protocol::socket(

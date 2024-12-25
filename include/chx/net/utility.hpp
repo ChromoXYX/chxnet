@@ -133,7 +133,7 @@ template <typename F, typename... Args> class fixed_ref_fn {
 
 template <typename Container> class carrier {
     Container __M_c;
-    const std::size_t __M_offset, __M_len;
+    std::size_t __M_offset = 0, __M_len = 0;
 
   public:
     using value_type = unsigned char;
@@ -141,6 +141,7 @@ template <typename Container> class carrier {
     carrier(Container&& c, std::size_t offset, std::size_t len)
         : __M_c(std::move(c)), __M_offset(offset), __M_len(len) {}
     carrier(carrier&&) = default;
+    carrier& operator=(carrier&&) = default;
 
     constexpr std::size_t size() const noexcept(true) { return __M_len; }
     constexpr value_type* data() noexcept(true) {

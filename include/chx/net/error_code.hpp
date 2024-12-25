@@ -209,13 +209,13 @@ inline void assign_ec(
 #define __CHXNET_MAKE_QUOTE(s) __CHXNET_MAKE_QUOTE_IMPL(s)
 
 #define __CHXNET_MAKE_EX_WITH(v, type)                                         \
-    type(v + " at file: " __FILE__ " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+    type(v + " at " __FILE__ ":" __CHXNET_MAKE_QUOTE(__LINE__))
 #define __CHXNET_MAKE_EX_CODE_WITH(code, type)                                 \
     __CHXNET_MAKE_EX_WITH(::chx::net::make_ec(code).message(), type)
 #define __CHXNET_MAKE_EX_CODE(code)                                            \
     __CHXNET_MAKE_EX_CODE_WITH(code, ::chx::net::exception)
 #define __CHXNET_MAKE_EX_CSTR_WITH(cstr, type)                                 \
-    type(cstr " at file: " __FILE__ " line: " __CHXNET_MAKE_QUOTE(__LINE__))
+    type(cstr " at " __FILE__ ":" __CHXNET_MAKE_QUOTE(__LINE__))
 #define __CHXNET_MAKE_EX_CSTR(cstr)                                            \
     __CHXNET_MAKE_EX_CSTR_WITH(cstr, ::chx::net::exception)
 

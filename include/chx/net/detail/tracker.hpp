@@ -49,7 +49,7 @@ struct counter_block {
             other.block = nullptr;
             return *this;
         }
-        constexpr ~__guard_base() noexcept(true) { release(); }
+        ~__guard_base() noexcept(true) { release(); }
 
         constexpr bool is_valid() const noexcept(true) {
             return block != nullptr && block->is_valid();
@@ -112,8 +112,8 @@ struct counter_block {
         constexpr weak_guard(const owner_guard& owner) noexcept(true)
             : __guard_base(owner.block) {}
 
-        constexpr weak_guard& operator=(weak_guard&& other) = default;
-        constexpr weak_guard& operator=(const weak_guard& other) = default;
+        weak_guard& operator=(weak_guard&& other) = default;
+        weak_guard& operator=(const weak_guard& other) = default;
     };
 
   private:
@@ -132,6 +132,7 @@ using weak_guard = counter_block::weak_guard;
 template <typename Object> struct enable_weak_from_this;
 template <typename Object> class weak_ptr {
     friend struct enable_weak_from_this<Object>;
+    template <typename U> friend struct weak_ptr;
 
     Object* __M_ptr = nullptr;
     weak_guard __M_guard;
@@ -140,12 +141,21 @@ template <typename Object> class weak_ptr {
     constexpr weak_ptr() = default;
     constexpr weak_ptr(const weak_ptr&) = default;
 
+    template <typename U, typename T>
+    constexpr weak_ptr(const weak_ptr<U>& p, T* t)
+        : __M_ptr(t), __M_guard(p.__M_guard) {}
+
     constexpr weak_ptr& operator=(const weak_ptr&) = default;
     constexpr weak_ptr& operator=(weak_ptr&&) = default;
 
     constexpr Object* operator->() const noexcept(true) { return __M_ptr; }
     constexpr Object* get() const noexcept(true) { return __M_ptr; }
     constexpr Object& operator*() const noexcept(true) { return *__M_ptr; }
+
+    template <typename U>
+    constexpr operator weak_ptr<U>() const noexcept(true) {
+        return weak_ptr<U>(*this, static_cast<U*>(__M_ptr));
+    }
 
     constexpr Object* lock() const noexcept(true) { return __M_ptr; }
 
@@ -162,6 +172,32 @@ template <typename Object> class weak_ptr {
   private:
     constexpr weak_ptr(Object* obj, const owner_guard& owner) noexcept(true)
         : __M_ptr(obj), __M_guard(owner) {}
+};
+template <typename U, typename T>
+weak_ptr(const weak_ptr<U>&, T*) -> weak_ptr<T>;
+
+template <> class weak_ptr<void> {
+    template <typename U> friend struct weak_ptr;
+
+    weak_guard __M_guard;
+
+  public:
+    constexpr weak_ptr() = default;
+    constexpr weak_ptr(const weak_ptr&) = default;
+
+    template <typename U>
+    constexpr weak_ptr(const weak_ptr<U>& p, void* t)
+        : __M_guard(p.__M_guard) {}
+
+    weak_ptr& operator=(const weak_ptr&) = default;
+    weak_ptr& operator=(weak_ptr&&) = default;
+
+    constexpr operator bool() const noexcept(true) { return !expired(); }
+
+    constexpr bool expired() const noexcept(true) {
+        return !__M_guard.is_valid();
+    }
+    constexpr void release() noexcept(true) { __M_guard.release(); }
 };
 
 template <typename Object> struct enable_weak_from_this {

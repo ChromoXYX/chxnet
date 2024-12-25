@@ -51,9 +51,6 @@ template <typename Protocol> class basic_socket {
         return *this;
     }
 
-    template <typename CompletionToken>
-    decltype(auto) async_poll(int event, CompletionToken&& completion_token);
-
   public:
     ~basic_socket() {
         if (is_open()) {
@@ -295,6 +292,9 @@ template <typename Protocol> class basic_socket {
             detail::async_token_bind<const std::error_code&>(
                 std::forward<CompletionToken>(completion_token)));
     }
+
+    template <typename CompletionToken>
+    decltype(auto) async_poll(int event, CompletionToken&& completion_token);
 };
 }  // namespace chx::net
 

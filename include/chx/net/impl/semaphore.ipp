@@ -5,6 +5,7 @@
 #include "../detail/tracker.hpp"
 
 #include <algorithm>
+#include <optional>
 
 namespace chx::net::detail {
 namespace tags {
@@ -110,11 +111,11 @@ template <> struct async_operation<tags::task_queue_tag> {
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* task) {
-                    token(task->__M_ec,
-                          !task->__M_ec
-                              ? std::move(*reinterpret_cast<Resource*>(
-                                    task->__M_additional))
-                              : nullptr);
+                    token(task->__M_ec, !task->__M_ec
+                                            ? std::optional<Resource>(std::move(
+                                                  *reinterpret_cast<Resource*>(
+                                                      task->__M_additional)))
+                                            : std::nullopt);
                     return 0;
                 },
                 std::forward<BindCompletionToken>(bind_completion_token))),
@@ -128,6 +129,7 @@ template <typename CompletionToken>
 decltype(auto) chx::net::semaphore<Resource>::async_acquire(
     CompletionToken&& completion_token) {
     return detail::async_operation<detail::tags::task_queue_tag>().push(
-        this, detail::async_token_bind<const std::error_code&, Resource&&>(
+        this, detail::async_token_bind<const std::error_code&,
+                                       std::optional<Resource>>(
                   std::forward<CompletionToken>(completion_token)));
 }
