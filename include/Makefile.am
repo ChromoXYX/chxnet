@@ -8,7 +8,7 @@ nobase_include_HEADERS = \
     chx/net/file.hpp \
     chx/net/tcp.hpp \
     chx/net/utility.hpp \
-    chx/net/basic_socket.hpp \
+    chx/net/stream_base.hpp \
     chx/net/iovec_buffer.hpp \
     chx/net/udp.hpp \
     chx/net/async_read_until.hpp \

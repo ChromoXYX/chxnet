@@ -1,13 +1,11 @@
 #pragma once
 
 #include "./ip.hpp"
-#include "./basic_socket.hpp"
 
 namespace chx::net::ip {
 
 class tcp {
   public:
-    using socket_base = basic_socket<tcp>;
     class socket;
     class acceptor;
 

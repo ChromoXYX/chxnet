@@ -4,6 +4,7 @@
 
 #include "./io_context.hpp"
 #include "./impl/general_async_close.hpp"
+#include "./impl/general_io.hpp"
 
 namespace chx::net::detail::tags {
 struct cancel_fd {};
@@ -28,21 +29,21 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::sock_poll> {
 };
 
 namespace chx::net {
-template <typename Protocol> class basic_socket {
+class stream_base {
     template <typename Tag> friend struct detail::async_operation;
 
   protected:
     const io_context* __M_ctx = nullptr;
     int __M_fd = -1;
-    // std::size_t __M_associated_task = 0;
 
-    constexpr basic_socket(io_context* ctx) noexcept(true) : __M_ctx(ctx) {
-        assert(ctx != nullptr);
-    }
-    basic_socket(basic_socket&& other) noexcept(true)
+  public:
+    constexpr stream_base(io_context& ctx) noexcept(true) : __M_ctx(&ctx) {}
+    constexpr stream_base(io_context& ctx, int fd) noexcept(true)
+        : __M_ctx(&ctx), __M_fd(fd) {}
+    stream_base(stream_base&& other) noexcept(true)
         : __M_ctx(other.__M_ctx), __M_fd(std::exchange(other.__M_fd, -1)) {}
 
-    basic_socket& operator=(basic_socket&& other) noexcept(true) {
+    stream_base& operator=(stream_base&& other) noexcept(true) {
         if (this == &other) {
             return *this;
         }
@@ -51,8 +52,7 @@ template <typename Protocol> class basic_socket {
         return *this;
     }
 
-  public:
-    ~basic_socket() {
+    ~stream_base() {
         if (is_open()) {
             std::error_code ec;
             // cancel();
@@ -174,117 +174,6 @@ template <typename Protocol> class basic_socket {
         }
     }
 
-    void open(const Protocol& protocol = Protocol::v4()) {
-        if (is_open()) {
-            close();
-        }
-        if (int new_fd = ::socket(protocol.family(), protocol.socket_type(), 0);
-            new_fd > 0) {
-            __M_fd = new_fd;
-        } else {
-            __CHXNET_THROW(errno);
-        }
-    }
-
-    void open(const Protocol& protocol, std::error_code& ec) noexcept(true) {
-        if (is_open()) {
-            close(ec);
-            if (ec) {
-                return;
-            }
-        }
-        if (int new_fd = ::socket(protocol.family(), protocol.socket_type(), 0);
-            new_fd > 0) {
-            __M_fd = new_fd;
-            ec.clear();
-        } else {
-            net::assign_ec(ec, errno);
-        }
-    }
-
-    void bind(const typename Protocol::endpoint& ep) {
-        if (ep.address().is_v4()) {
-            struct sockaddr_in sar = ep.sockaddr_in();
-            if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
-                       sizeof(sar)) == -1) {
-                __CHXNET_THROW(errno);
-            }
-        } else {
-            struct sockaddr_in6 sar = ep.sockaddr_in6();
-            if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
-                       sizeof(sar)) == -1) {
-                __CHXNET_THROW(errno);
-            }
-        }
-    }
-
-    void bind(const typename Protocol::endpoint& ep,
-              std::error_code& ec) noexcept(true) {
-        if (ep.address().is_v4()) {
-            struct sockaddr_in sar = ep.sockaddr_in();
-            if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
-                       sizeof(sar)) == -1) {
-                net::assign_ec(ec, errno);
-                return;
-            }
-        } else {
-            struct sockaddr_in6 sar = ep.sockaddr_in6();
-            if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
-                       sizeof(sar)) == -1) {
-                net::assign_ec(ec, errno);
-                return;
-            }
-        }
-    }
-
-    typename Protocol::endpoint local_endpoint(std::error_code& e) const
-        noexcept(true) {
-        alignas(struct sockaddr_in6) unsigned char buffer[64] = {};
-        socklen_t len = sizeof(buffer);
-        if (getsockname(native_handler(),
-                        reinterpret_cast<struct sockaddr*>(buffer),
-                        &len) == 0) {
-            return Protocol::endpoint::make_endpoint(
-                reinterpret_cast<struct sockaddr*>(buffer));
-        } else {
-            assign_ec(e, errno);
-            return {};
-        }
-    }
-    typename Protocol::endpoint local_endpoint() const {
-        std::error_code e;
-        typename Protocol::endpoint ep = local_endpoint(e);
-        if (!e) {
-            return std::move(ep);
-        } else {
-            __CHXNET_THROW_EC(e);
-        }
-    }
-
-    typename Protocol::endpoint remote_endpoint(std::error_code& e) const
-        noexcept(true) {
-        alignas(struct sockaddr_in6) unsigned char buffer[64] = {};
-        socklen_t len = sizeof(buffer);
-        if (getpeername(native_handler(),
-                        reinterpret_cast<struct sockaddr*>(buffer),
-                        &len) == 0) {
-            return Protocol::endpoint::make_endpoint(
-                reinterpret_cast<struct sockaddr*>(buffer));
-        } else {
-            assign_ec(e, errno);
-            return {};
-        }
-    }
-    typename Protocol::endpoint remote_endpoint() const {
-        std::error_code e;
-        typename Protocol::endpoint ep = remote_endpoint(e);
-        if (!e) {
-            return std::move(ep);
-        } else {
-            __CHXNET_THROW_EC(e);
-        }
-    }
-
     template <typename CompletionToken>
     decltype(auto) async_close(CompletionToken&& completion_token) {
         return detail::async_operation<detail::tags::async_close>()(
@@ -295,6 +184,120 @@ template <typename Protocol> class basic_socket {
 
     template <typename CompletionToken>
     decltype(auto) async_poll(int event, CompletionToken&& completion_token);
+
+    template <typename ConstBufferSequence, typename CompletionToken>
+    decltype(auto) async_write_some(
+        ConstBufferSequence&& const_buffer_sequence,
+        CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<is_const_buffer_sequence<
+                std::remove_reference_t<ConstBufferSequence>>::value>>
+            _ = net::detail::sfinae) {
+        return net::detail::async_operation<net::detail::tags::writev>()(
+            &get_associated_io_context(), this,
+            std::forward<ConstBufferSequence>(const_buffer_sequence),
+            net::detail::async_token_bind<const std::error_code&, std::size_t>(
+                std::forward<CompletionToken>(completion_token)));
+    }
+
+    template <typename ConstBuffer, typename CompletionToken>
+    decltype(auto) async_write_some(
+        ConstBuffer&& buffer, CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
+            _ = net::detail::sfinae) {
+        return net::detail::async_operation<net::detail::tags::simple_write>()(
+            &get_associated_io_context(), this,
+            std::forward<ConstBuffer>(buffer),
+            net::detail::async_token_bind<const std::error_code&, std::size_t>(
+                std::forward<CompletionToken>(completion_token)));
+    }
+
+    template <typename ConstBuffer>
+    std::size_t write(
+        ConstBuffer&& const_buffer, std::error_code& ec,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
+            _ = net::detail::sfinae) noexcept(true) {
+        ec.clear();
+        net::const_buffer buf =
+            net::buffer(std::forward<ConstBuffer>(const_buffer));
+        ssize_t r = 0;
+        if (r = ::write(native_handler(), buf.data(), buf.size()); r == -1) {
+            net::assign_ec(ec, errno);
+        }
+        return r;
+    }
+    template <typename ConstBuffer>
+    std::size_t write(
+        ConstBuffer&& const_buffer,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
+            _ = net::detail::sfinae) {
+        std::error_code ec;
+        std::size_t r = write(std::forward<ConstBuffer>(const_buffer), ec);
+        if (!ec) {
+            return r;
+        } else {
+            __CHXNET_THROW_EC(ec);
+        }
+    }
+
+    template <typename MutableBuffer, typename CompletionToken>
+    decltype(auto)
+    async_read_some(MutableBuffer&& buffer, CompletionToken&& completion_token,
+                    net::detail::sfinae_placeholder<std::enable_if_t<
+                        net::detail::is_mutable_buffer<MutableBuffer>::value>>
+                        _ = net::detail::sfinae) {
+        return net::detail::async_operation<net::detail::tags::simple_read>()(
+            &get_associated_io_context(), this,
+            std::forward<MutableBuffer>(buffer),
+            net::detail::async_token_bind<const std::error_code&, std::size_t>(
+                std::forward<CompletionToken>(completion_token)));
+    }
+
+    template <typename MutableBuffer>
+    std::size_t read(MutableBuffer&& mutable_buffer, std::error_code& ec,
+                     net::detail::sfinae_placeholder<std::enable_if_t<
+                         net::detail::is_mutable_buffer<MutableBuffer>::value>>
+                         _ = net::detail::sfinae) noexcept(true) {
+        ec.clear();
+        net::mutable_buffer buf =
+            net::buffer(std::forward<MutableBuffer>(mutable_buffer));
+        ssize_t r = 0;
+        if (r = ::read(native_handler(), buf.data(), buf.size()); r == -1) {
+            net::assign_ec(ec, errno);
+        }
+        return r;
+    }
+    template <typename MutableBuffer>
+    std::size_t read(MutableBuffer&& mutable_buffer,
+                     net::detail::sfinae_placeholder<std::enable_if_t<
+                         net::detail::is_mutable_buffer<MutableBuffer>::value>>
+                         _ = net::detail::sfinae) {
+        std::error_code ec;
+        std::size_t r = read(std::forward<MutableBuffer>(mutable_buffer), ec);
+        if (!ec) {
+            return r;
+        } else {
+            __CHXNET_THROW_EC(ec);
+        }
+    }
+
+    template <typename MutableBufferSequence, typename CompletionToken>
+    decltype(auto) async_read_some(
+        MutableBufferSequence&& mutable_buffer_sequence,
+        CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<is_mutable_buffer_sequence<
+                std::remove_reference_t<MutableBufferSequence>>::value>>
+            _ = net::detail::sfinae) {
+        return net::detail::async_operation<net::detail::tags::readv>()(
+            &get_associated_io_context(), this,
+            std::forward<MutableBufferSequence>(mutable_buffer_sequence),
+            net::detail::async_token_bind<const std::error_code&, std::size_t>(
+                std::forward<CompletionToken>(completion_token)));
+    }
 };
 }  // namespace chx::net
 
@@ -318,10 +321,10 @@ operator()(io_context* ctx, Sock& sock, int event,
         completion_token);
 }
 
-template <typename Protocol>
 template <typename CompletionToken>
-decltype(auto) chx::net::basic_socket<Protocol>::async_poll(
-    int event, CompletionToken&& completion_token) {
+decltype(auto)
+chx::net::stream_base::async_poll(int event,
+                                  CompletionToken&& completion_token) {
     return detail::async_operation<detail::tags::sock_poll>()(
         &get_associated_io_context(), *this, event,
         detail::async_token_bind<const std::error_code&, int>(

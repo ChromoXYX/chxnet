@@ -201,8 +201,9 @@ template <> class weak_ptr<void> {
 };
 
 template <typename Object> struct enable_weak_from_this {
+  private:
     CHXNET_NONCOPYABLE
-
+  public:
     enable_weak_from_this() : owner(new counter_block) {}
 
     constexpr weak_ptr<Object> weak_from_this() noexcept(true) {

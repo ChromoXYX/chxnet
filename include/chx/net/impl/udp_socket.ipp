@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../udp.hpp"
-#include "../basic_socket.hpp"
+#include "../stream_base.hpp"
 
 #include "./general_io.hpp"
 #include "./general_ip_io.hpp"
@@ -20,25 +20,112 @@ struct chx::net::detail::async_operation<
 };
 
 namespace chx::net::ip {
-class udp::socket : public basic_socket<udp> {
+class udp::socket : public stream_base {
   public:
-    socket(io_context& ctx) noexcept(true) : basic_socket<udp>(&ctx) {}
-    socket(socket&& other) : basic_socket<udp>(std::move(other)) {}
+    socket(io_context& ctx) noexcept(true) : stream_base(ctx) {}
+    socket(socket&& other) : stream_base(std::move(other)) {}
 
-    socket(io_context& ctx, const udp& protocol) : basic_socket<udp>(&ctx) {
+    socket(io_context& ctx, const udp& protocol) : stream_base(ctx) {
         open(protocol);
     }
-    socket(io_context& ctx, const endpoint& ep) : basic_socket<udp>(&ctx) {
+    socket(io_context& ctx, const endpoint& ep) : stream_base(ctx) {
         open(ep.protocol());
         bind(ep);
     }
-    socket(io_context& ctx, int fd) : basic_socket<udp>(&ctx) { __M_fd = fd; }
+    socket(io_context& ctx, int fd) : stream_base(ctx) { __M_fd = fd; }
 
     constexpr socket& lower_layer() noexcept(true) { return *this; }
     constexpr const socket& lower_layer() const noexcept(true) { return *this; }
     constexpr socket& lowest_layer() noexcept(true) { return lower_layer(); }
     constexpr const socket& lowest_layer() const noexcept(true) {
         return lower_layer();
+    }
+
+    void open(const udp& protocol = udp::v4()) {
+        if (is_open()) {
+            close();
+        }
+        if (int new_fd = ::socket(protocol.family(), protocol.socket_type(), 0);
+            new_fd > 0) {
+            __M_fd = new_fd;
+        } else {
+            __CHXNET_THROW(errno);
+        }
+    }
+
+    void open(const udp& protocol, std::error_code& ec) noexcept(true) {
+        if (is_open()) {
+            close(ec);
+            if (ec) {
+                return;
+            }
+        }
+        if (int new_fd = ::socket(protocol.family(), protocol.socket_type(), 0);
+            new_fd > 0) {
+            __M_fd = new_fd;
+            ec.clear();
+        } else {
+            net::assign_ec(ec, errno);
+        }
+    }
+
+    void bind(const typename udp::endpoint& ep) {
+        if (ep.address().is_v4()) {
+            struct sockaddr_in sar = ep.sockaddr_in();
+            if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
+                       sizeof(sar)) == -1) {
+                __CHXNET_THROW(errno);
+            }
+        } else {
+            struct sockaddr_in6 sar = ep.sockaddr_in6();
+            if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
+                       sizeof(sar)) == -1) {
+                __CHXNET_THROW(errno);
+            }
+        }
+    }
+
+    void bind(const typename udp::endpoint& ep,
+              std::error_code& ec) noexcept(true) {
+        if (ep.address().is_v4()) {
+            struct sockaddr_in sar = ep.sockaddr_in();
+            if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
+                       sizeof(sar)) == -1) {
+                net::assign_ec(ec, errno);
+                return;
+            }
+        } else {
+            struct sockaddr_in6 sar = ep.sockaddr_in6();
+            if (::bind(__M_fd, reinterpret_cast<sockaddr*>(&sar),
+                       sizeof(sar)) == -1) {
+                net::assign_ec(ec, errno);
+                return;
+            }
+        }
+    }
+
+    typename udp::endpoint local_endpoint(std::error_code& e) const
+        noexcept(true) {
+        alignas(struct sockaddr_in6) unsigned char buffer[64] = {};
+        socklen_t len = sizeof(buffer);
+        if (getsockname(native_handler(),
+                        reinterpret_cast<struct sockaddr*>(buffer),
+                        &len) == 0) {
+            return udp::endpoint::make_endpoint(
+                reinterpret_cast<struct sockaddr*>(buffer));
+        } else {
+            assign_ec(e, errno);
+            return {};
+        }
+    }
+    typename udp::endpoint local_endpoint() const {
+        std::error_code e;
+        typename udp::endpoint ep = local_endpoint(e);
+        if (!e) {
+            return std::move(ep);
+        } else {
+            __CHXNET_THROW_EC(e);
+        }
     }
 
     template <typename CompletionToken>

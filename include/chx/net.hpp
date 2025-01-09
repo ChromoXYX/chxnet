@@ -8,7 +8,7 @@
 #include "./net/file.hpp"
 #include "./net/tcp.hpp"
 #include "./net/utility.hpp"
-#include "./net/basic_socket.hpp"
+#include "./net/stream_base.hpp"
 #include "./net/iovec_buffer.hpp"
 #include "./net/udp.hpp"
 #include "./net/async_read_until.hpp"
