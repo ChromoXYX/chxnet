@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <cstring>
 #include <utility>
@@ -54,6 +55,7 @@ class basic_token_storage {
         std::size_t __M_last_sz;
     };
 
+    template <std::size_t N> struct __empty_fn_placeholder {};
     template <typename> struct __base_impl;
     template <typename... _Ts> struct __base_impl<std::tuple<_Ts...>> {
         __base_impl() = default;
@@ -61,6 +63,7 @@ class basic_token_storage {
 
         virtual __ret_type invoke(_Ts... _ts) = 0;
         virtual void* underlying_data() noexcept(true) = 0;
+        virtual void destruct(basic_token_storage& self) = 0;
     };
     template <typename, typename> struct __wrapper_impl;
     template <typename _R, typename... _Ts>
@@ -79,6 +82,23 @@ class basic_token_storage {
         }
         virtual void* underlying_data() noexcept(true) override {
             return &_M_r;
+        }
+        virtual void destruct(basic_token_storage& self) override {
+            self.template emplace<__empty_fn_placeholder<sizeof(_R)>>(inplace);
+        }
+    };
+    template <std::size_t _N, typename... _Ts>
+    struct __wrapper_impl<__empty_fn_placeholder<_N>, std::tuple<_Ts...>>
+        : __base_impl<std::tuple<_Ts...>> {
+        unsigned char __b[_N];
+
+        virtual __ret_type invoke(_Ts... _ts) override { return {}; }
+        virtual void* underlying_data() noexcept(true) override {
+            assert(false);
+            return nullptr;
+        }
+        virtual void destruct(basic_token_storage& self) override {
+            self.template emplace<__empty_fn_placeholder<_N>>(inplace);
         }
     };
 
@@ -227,6 +247,7 @@ class basic_token_storage {
     void* underlying_data() const noexcept(true) {
         return __M_ptr->underlying_data();
     }
+    void destruct() { __M_ptr->destruct(*this); }
 
     template <typename... Args> decltype(auto) operator()(Args&&... args) {
         if (valid()) {

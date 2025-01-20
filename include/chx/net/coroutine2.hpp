@@ -313,44 +313,45 @@ struct awaitable_then_base {
     virtual ~awaitable_then_base() = default;
 };
 
-template <typename T> struct [[nodiscard]] awaitable_impl {
+template <typename T> struct [[nodiscard]] awaitable_view {
     CHXNET_NONCOPYABLE
 
     using value_type = T;
 
-    struct view {
+    struct awaitable_inter {
         CHXNET_NONCOPYABLE
 
-        awaitable_impl* pimpl = nullptr;
+        awaitable_view* pview = nullptr;
         std::coroutine_handle<> h = {};
 
         io_context::task_t* task = nullptr;
         //
         std::unique_ptr<awaitable_then_base> pthen;
         //
-        constexpr view(io_context::task_t* t) noexcept(true) : task(t) {}
-        view(view&& other)
-            : pimpl(std::exchange(other.pimpl, nullptr)),
+        constexpr awaitable_inter(io_context::task_t* t) noexcept(true)
+            : task(t) {}
+        awaitable_inter(awaitable_inter&& other)
+            : pview(std::exchange(other.pview, nullptr)),
               h(std::exchange(other.h, {})),
               task(std::exchange(other.task, nullptr)),
               pthen(std::move(other.pthen)) {
-            if (pimpl) {
-                pimpl->__M_view = this;
+            if (pview) {
+                pview->__M_view = this;
             }
         }
-        ~view() {
-            if (pimpl) {
-                pimpl->__M_view = nullptr;
+        ~awaitable_inter() {
+            if (pview) {
+                pview->__M_view = nullptr;
             }
         }
 
-        awaitable_impl create_impl() { return {this}; }
+        awaitable_view create_view() { return {this}; }
         void resume_h() {
-            std::coroutine_handle<> old_h = h;
+            std::coroutine_handle<> old_h = std::exchange(h, {});
             std::unique_ptr<awaitable_then_base> old_then(std::move(pthen));
-            if (pimpl) {
+            if (pview) {
                 // how could pimpl be nullptr while then or h valid?
-                pimpl->disconnect();
+                pview->disconnect();
             }
             if (old_then) {
                 old_then->reach();
@@ -360,15 +361,15 @@ template <typename T> struct [[nodiscard]] awaitable_impl {
         }
 
         void set_value(const std::error_code& ec) noexcept(true) {
-            if (pimpl) {
-                pimpl->__M_v.template emplace<2>(ec);
+            if (pview) {
+                pview->__M_v.template emplace<2>(ec);
             }
         }
         template <typename... Rs>
         void set_value(Rs&&... rs) noexcept(
             std::is_nothrow_constructible_v<T, decltype(rs)...>) {
-            if (pimpl) {
-                pimpl->__M_v.template emplace<1>(std::forward<Rs>(rs)...);
+            if (pview) {
+                pview->__M_v.template emplace<1>(std::forward<Rs>(rs)...);
             }
         }
         constexpr io_context& get_associated_io_context() noexcept(true) {
@@ -376,17 +377,17 @@ template <typename T> struct [[nodiscard]] awaitable_impl {
         }
     };
 
-    awaitable_impl(view* v) : __M_view(v) { __M_view->pimpl = this; }
-    awaitable_impl(awaitable_impl&& other)
+    awaitable_view(awaitable_inter* v) : __M_view(v) { __M_view->pview = this; }
+    awaitable_view(awaitable_view&& other)
         : __M_view(std::exchange(other.__M_view, nullptr)),
           __M_v(std::move(other.__M_v)) {
         assert(__M_view);
-        __M_view->pimpl = this;
+        __M_view->pview = this;
     }
-    ~awaitable_impl() { disconnect(); }
+    ~awaitable_view() { disconnect(); }
 
     struct awaitable {
-        awaitable_impl& pimpl;
+        awaitable_view& pimpl;
 
         constexpr bool await_ready() noexcept(true) { return pimpl.ready(); }
         constexpr void await_suspend(std::coroutine_handle<> h) noexcept(true) {
@@ -395,7 +396,7 @@ template <typename T> struct [[nodiscard]] awaitable_impl {
         T await_resume() { return pimpl.resume(); }
     };
     friend struct awaitable;
-    friend struct view;
+    friend struct awaitable_inter;
     //
     friend struct when_any_impl;
     //
@@ -415,7 +416,7 @@ template <typename T> struct [[nodiscard]] awaitable_impl {
     constexpr bool connected() const noexcept(true) { return __M_view; }
     constexpr void disconnect() noexcept(true) {
         if (connected()) {
-            __M_view->pimpl = nullptr;
+            __M_view->pview = nullptr;
             // __M_view->pthen = nullptr;
             __M_view->h = {};
             __M_view->pthen.reset();
@@ -424,7 +425,7 @@ template <typename T> struct [[nodiscard]] awaitable_impl {
     }
 
   protected:
-    view* __M_view = nullptr;
+    awaitable_inter* __M_view = nullptr;
     std::variant<std::monostate, T, std::error_code> __M_v;
 
     constexpr bool ready() noexcept(true) { return __M_v.index() != 0; }
@@ -433,9 +434,6 @@ template <typename T> struct [[nodiscard]] awaitable_impl {
         __M_view->h = h;
     }
     T resume() {
-        if (__M_view) {
-            __M_view->h = {};
-        }
         if (__M_v.index() == 2) {
             __CHXNET_THROW_EC(std::get<2>(__M_v));
         }
@@ -444,6 +442,118 @@ template <typename T> struct [[nodiscard]] awaitable_impl {
 
     constexpr io_context::task_t* get_associated_task() noexcept(true) {
         return __M_view->task;
+    }
+};
+
+template <typename T> struct [[nodiscard]] re_awaitable {
+    CHXNET_NONCOPYABLE
+
+    struct view {
+        friend struct re_awaitable;
+
+        CHXNET_NONCOPYABLE
+
+        struct awa {
+            view& __M_self;
+
+            bool await_ready() noexcept(true) {
+                return __M_self.__await_ready();
+            }
+            void await_suspend(std::coroutine_handle<> h) noexcept(true) {
+                return __M_self.__await_suspend(h);
+            }
+            auto await_resume() { return __M_self.__await_resume(); }
+        };
+
+        view(view&& other)
+            : __M_q(std::move(other.__M_q)),
+              __M_impl(std::exchange(other.__M_impl, nullptr)) {
+            if (__M_impl) {
+                __M_impl->__M_view = this;
+            }
+        }
+
+        ~view() {
+            if (__M_impl) {
+                __M_impl->__M_view = nullptr;
+                __M_impl->__M_h = {};
+                __M_impl = nullptr;
+            }
+        }
+
+        constexpr awa operator co_await() noexcept(true) { return {*this}; }
+
+      protected:
+        view(re_awaitable* impl) noexcept(true) : __M_impl(impl) {
+            __M_impl->__M_view = this;
+        }
+
+        std::queue<std::variant<std::error_code, T>> __M_q;
+        re_awaitable* __M_impl = nullptr;
+
+        bool __await_ready() noexcept(true) {
+            return !__M_q.empty() || !__M_impl;
+        }
+        constexpr void
+        __await_suspend(std::coroutine_handle<> h) noexcept(true) {
+            __M_impl->__M_h = h;
+        }
+        T __await_resume() {
+            if (__M_q.empty()) {
+                __CHXNET_THROW_CSTR("Coroutine resumed with empty value.");
+            }
+            auto v = std::move(__M_q.front());
+            __M_q.pop();
+            if (v.index() == 1) {
+                return std::move(std::get<1>(v));
+            } else {
+                __CHXNET_THROW_EC(std::get<0>(v));
+            }
+        }
+    };
+
+    view* __M_view = nullptr;
+    std::coroutine_handle<> __M_h = {};
+    io_context::task_t* __M_t = nullptr;
+
+    constexpr re_awaitable(io_context::task_t* t) noexcept(true) : __M_t(t) {}
+    re_awaitable(re_awaitable&& other) noexcept(true)
+        : __M_view(std::exchange(other.__M_view, nullptr)),
+          __M_h(std::exchange(other.__M_h, {})),
+          __M_t(std::exchange(other.__M_t, nullptr)) {
+        if (__M_view) {
+            __M_view->__M_impl = this;
+        }
+    }
+    ~re_awaitable() {
+        if (__M_view) {
+            __M_view->__M_impl = nullptr;
+        }
+    }
+
+    view create_view() { return {this}; }
+    void resume_h() {
+        if (__M_h) {
+            std::exchange(__M_h, {}).resume();
+        }
+    }
+
+    void set_value(const std::error_code& ec) noexcept(true) {
+        if (__M_view) {
+            __M_view->__M_q.emplace(std::in_place_index<0>, ec);
+        }
+    }
+    template <typename... Rs>
+    void set_value(Rs&&... rs) noexcept(
+        std::is_nothrow_constructible_v<T, decltype(rs)...>) {
+        if (__M_view) {
+            __M_view->__M_q.emplace(std::in_place_index<1>,
+                                    std::forward<Rs>(rs)...);
+        }
+    }
+
+    constexpr io_context& get_associated_io_context() noexcept(true) {
+        return __M_t->get_associated_io_context();
     }
 };
 
@@ -596,7 +706,7 @@ struct when_any_impl {
 }  // namespace detail::coroutine
 
 template <typename T>
-using awaitable = typename detail::coroutine::awaitable_impl<T>;
+using awaitable = typename detail::coroutine::awaitable_view<T>;
 
 namespace detail::coroutine {
 template <typename FinalFunctor, typename Token>
@@ -665,10 +775,13 @@ template <typename AwaitableView> struct callable_impl {
     }
 };
 
-template <typename... Ts> struct ops {
-    using awaitable_view_type = typename awaitable_impl<
-        std::decay_t<typename get_tail_type<Ts...>::type>>::view;
-    using callable_type = callable_impl<awaitable_view_type>;
+template <bool use_reusable, typename... Ts> struct ops {
+    using value_type = std::decay_t<typename get_tail_type<Ts...>::type>;
+    using awaitable_inter_type = std::conditional_t<
+        use_reusable, re_awaitable<value_type>,
+        typename awaitable_view<value_type>::awaitable_inter>;
+
+    using callable_type = callable_impl<awaitable_inter_type>;
     using attribute_type = attribute<async_token>;
 
     io_context::task_t* __M_task = nullptr;
@@ -684,18 +797,18 @@ template <typename... Ts> struct ops {
         return static_cast<callable_type*>(
                    static_cast<typename TypeIdentity::type*>(
                        __M_task->get_underlying_data()))
-            ->awaitable_view.create_impl();
+            ->awaitable_view.create_view();
     }
 };
 
-struct main_op {
+template <bool use_reusable> struct main_op {
     using attribute_type = attribute<async_token>;
 
     template <typename... Signature>
     constexpr auto
     bind(sfinae_placeholder<std::enable_if_t<(sizeof...(Signature) > 0)>> _ =
              detail::sfinae) const noexcept(true) {
-        return ops<Signature...>{};
+        return ops<use_reusable, Signature...>{};
     }
 };
 
@@ -736,8 +849,11 @@ co_spawn_operation(Task&&) -> co_spawn_operation<std::remove_reference_t<Task>>;
  * @brief Helper class to generate a coroutine-based completion token.
  *
  */
-using use_coro_t = detail::coroutine::main_op;
+using use_coro_t = detail::coroutine::main_op<false>;
 inline static constexpr use_coro_t use_coro = {};
+
+using use_reusable_coro_t = detail::coroutine::main_op<true>;
+inline static constexpr use_reusable_coro_t use_reusable_coro = {};
 
 /**
  * @brief Spawn a task in io_context.
