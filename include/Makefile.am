@@ -8,11 +8,11 @@ nobase_include_HEADERS = \
     chx/net/file.hpp \
     chx/net/tcp.hpp \
     chx/net/utility.hpp \
-    chx/net/stream_base.hpp \
     chx/net/iovec_buffer.hpp \
     chx/net/udp.hpp \
     chx/net/async_read_until.hpp \
     chx/net/as_tuple.hpp \
+    chx/net/stream_base.hpp \
     chx/net/async_write_sequence_exactly.hpp \
     chx/net/exception.hpp \
     chx/net/semaphore.hpp \
@@ -21,7 +21,6 @@ nobase_include_HEADERS = \
     chx/net/async_combine.hpp \
     chx/net/dynamic_buffer.hpp \
     chx/net/async_openat.hpp \
-    chx/net/timeout.hpp \
     chx/net/async_write_sequence.hpp \
     chx/net/error_code.hpp \
     chx/net/basic_fixed_timer.hpp \
@@ -30,13 +29,13 @@ nobase_include_HEADERS = \
     chx/net/buffer.hpp \
     chx/net/basic_thread_context.hpp \
     chx/net/io_context.hpp \
+    chx/net/basic_stream_view.hpp \
     chx/net/async_read.hpp \
     chx/net/async_token.hpp \
     chx/net/managed.hpp \
     chx/net/detached.hpp \
     chx/net/buffer_sequence.hpp \
     chx/net/ktimer.hpp \
-    chx/net/detail/mm.hpp \
     chx/net/detail/task_aware.hpp \
     chx/net/detail/scope_exit.hpp \
     chx/net/detail/type_identity.hpp \
@@ -68,15 +67,16 @@ nobase_include_HEADERS = \
     chx/net/impl/general_async_close.hpp \
     chx/net/impl/udp_socket.ipp \
     chx/net/impl/async_openat.ipp \
-    chx/net/impl/timeout.ipp \
     chx/net/impl/file.ipp \
     chx/net/impl/tcp_acceptor.ipp \
     chx/net/impl/io_context.ipp \
+    chx/net/impl/general_io.hpp \
     chx/net/impl/async_write_sequence.ipp \
+    chx/net/impl/general_ip_io.hpp \
+    chx/net/impl/basic_ip_socket.hpp \
     chx/net/impl/async_write_some_exactly.ipp \
     chx/net/impl/semaphore.ipp \
     chx/net/impl/async_write_some_managed.ipp \
-    chx/net/impl/general_ip_socket_io.hpp \
     chx/net/impl/file_descriptor.ipp \
     chx/net/impl/async_read_until.ipp \
     chx/net/impl/basic_fixed_timer.ipp \

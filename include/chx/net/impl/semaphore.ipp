@@ -15,8 +15,7 @@ template <typename Action> struct task_queue_cncl_cntl {};
 
 template <> struct async_operation<tags::task_queue_tag> {
     template <typename Resource>
-    struct cncl_cntl : io_context::task_t::cancellation_controller_base,
-                       enable_weak_from_this<cncl_cntl<Resource>> {
+    struct cncl_cntl : io_context::task_t::cancellation_controller_base {
         cncl_cntl(semaphore<Resource>* q, io_context::task_t* t) noexcept(true)
             : queue(q->weak_from_this()), task(t) {}
 
@@ -46,28 +45,6 @@ template <> struct async_operation<tags::task_queue_tag> {
 
         constexpr bool valid() noexcept(true) { return !queue.expired(); }
         constexpr void exclude() noexcept(true) { queue.release(); }
-
-        struct cncl : cancellation_base {
-            weak_ptr<cncl_cntl> controller;
-
-            cncl(cncl_cntl* cntl) : controller(cntl->weak_from_this()) {}
-
-            constexpr bool valid() noexcept(true) {
-                return !controller.expired() && controller->valid();
-            }
-
-            void operator()() override {
-                if (valid()) {
-                    controller->cancel(controller->task);
-                }
-            }
-        };
-
-        void operator()(cancellation_signal& signal) override {
-            if (valid()) {
-                signal.emplace(std::make_unique<cncl>(this));
-            }
-        }
 
         void async_flush() {
             if (valid() && !queue->__M_flushing) {

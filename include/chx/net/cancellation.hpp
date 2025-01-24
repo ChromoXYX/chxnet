@@ -3,114 +3,81 @@
 #include "./async_token.hpp"
 #include "./async_combine.hpp"
 
-namespace chx::net::detail::tags {
-struct outer_cancel {};
-}  // namespace chx::net::detail::tags
-
-template <>
-struct chx::net::detail::async_operation<chx::net::detail::tags::outer_cancel> {
-    void normal_cancel(io_context* ctx, io_context::task_t* task) const {
-        ctx->cancel_task(task);
-    }
-    void invoke_cancel(io_context* ctx, io_context::task_t* task) const {
-        task->__M_token(task);
-    }
-    constexpr io_context::task_t::__CancelType
-    get_cancel_type(io_context::task_t* t) const noexcept(true) {
-        return t->__M_cancel_type;
-    }
-};
-
 namespace chx::net {
 namespace detail {
 template <typename BindCompletionToken> struct cancellation_ops;
 struct cancellation_assign;
 
-struct cancellation_base {
-    virtual void operator()() = 0;
-    virtual ~cancellation_base() = default;
+namespace tags {
+struct unified_cancel {};
+struct cancellation_get_task {};
+struct cancellation_assign {};
+}  // namespace tags
+
+template <> struct async_operation<tags::unified_cancel> {
+    void cancel(io_context* ctx, io_context::task_t* task) const {
+        if (!task->__M_custom_cancellation) {
+            switch (task->__M_cancel_type) {
+            case task_declare::task_decl::__CT_io_uring_based: {
+                ctx->cancel_task(task);
+                break;
+            }
+            case task_declare::task_decl::__CT_invoke_cancel: {
+                task->__M_token(task);
+                break;
+            }
+            case task_declare::task_decl::__CT_no_cancel:
+                break;
+            }
+        } else {
+            task->__M_custom_cancellation->cancel(task);
+        }
+    }
 };
 }  // namespace detail
 struct cancellation_signal {
-    CHXNET_NONCOPYABLE
-
     template <typename BindCompletionToken>
     friend struct detail::cancellation_ops;
     friend struct detail::cancellation_assign;
     template <typename Tag> friend struct detail::async_operation;
 
     cancellation_signal() = default;
-    cancellation_signal(cancellation_signal&&) = default;
-    cancellation_signal& operator=(cancellation_signal&&) = default;
+    cancellation_signal(const cancellation_signal&) = default;
+    cancellation_signal& operator=(const cancellation_signal&) = default;
 
     void emit() {
-        if (__M_op) {
-            (*__M_op)();
+        if (__M_tracker) {
+            detail::async_operation<detail::tags::unified_cancel>().cancel(
+                &__M_tracker->get_associated_io_context(), __M_tracker.get());
         }
     }
 
-    void clear() noexcept(true) { __M_op.reset(); }
-    detail::cancellation_base* get() noexcept(true) { return __M_op.get(); }
-
-    bool valid() const noexcept(true) { return __M_op.get(); }
+    void clear() noexcept(true) { __M_tracker.release(); }
+    bool valid() const noexcept(true) { return __M_tracker; }
     operator bool() const noexcept(true) { return valid(); }
 
   protected:
-    void assign(io_context::task_t* task) noexcept(true) {
-        struct ops : detail::cancellation_base {
-            io_context::task_t* t;
-            ops(io_context::task_t* task) noexcept(true) : t(task) {}
-
-            void operator()() override {
-                detail::async_operation<detail::tags::outer_cancel>()
-                    .normal_cancel(&t->get_associated_io_context(), t);
-            }
-        };
-        struct ops2 : detail::cancellation_base {
-            io_context::task_t* t;
-            ops2(io_context::task_t* task) noexcept(true) : t(task) {}
-            void operator()() override {
-                detail::async_operation<detail::tags::outer_cancel>()
-                    .invoke_cancel(&t->get_associated_io_context(), t);
-            }
-        };
-        if (!task->__M_custom_cancellation) {
-            switch (detail::async_operation<detail::tags::outer_cancel>()
-                        .get_cancel_type(task)) {
-            case io_context::task_t::__CT_io_uring_based: {
-                __M_op = std::make_unique<ops>(task);
-                break;
-            }
-            case io_context::task_t::__CT_invoke_cancel: {
-                __M_op = std::make_unique<ops2>(task);
-                break;
-            }
-            case detail::task_declare::task_decl::__CT_no_cancel:
-                __M_op.reset();
-                break;
-            }
-        } else {
-            (*task->__M_custom_cancellation)(*this);
-        }
+    detail::weak_ptr<io_context::task_t> __M_tracker;
+    void assign(io_context::task_t* t) noexcept(true) {
+        __M_tracker = t->weak_from_this();
     }
-    void
-    emplace(std::unique_ptr<detail::cancellation_base> base) noexcept(true) {
-        __M_op = std::move(base);
-    }
-
-    std::unique_ptr<detail::cancellation_base> __M_op;
 };
 
 namespace detail {
-struct cancellation_attr {};
-
-struct cancellation_assign {
-    void operator()(io_context::task_t* t,
-                    cancellation_signal& s) noexcept(true) {
-        s.assign(t);
+template <> struct async_operation<tags::cancellation_get_task> {
+    weak_ptr<io_context::task_t> operator()(cancellation_signal& sig) const
+        noexcept(true) {
+        return sig.__M_tracker;
+    }
+};
+template <> struct async_operation<tags::cancellation_assign> {
+    void operator()(cancellation_signal& sig, io_context::task_t* t) const
+        noexcept(true) {
+        sig.assign(t);
     }
 };
 
+struct cancellation_attr {};
 template <typename BindCompletionToken> struct cancellation_ops {
     using attribute_type = attribute<async_token, cancellation_attr>;
 
@@ -157,38 +124,13 @@ template <typename RefCompletionToken>
 cancellation_inter(cancellation_signal&, RefCompletionToken&&)
     -> cancellation_inter<std::remove_reference_t<RefCompletionToken>>;
 
-namespace tags {
-struct async_combine_cancel_and_submit {};
-}  // namespace tags
-
-template <> struct async_operation<tags::async_combine_cancel_and_submit> {
-    void cancel(io_context* ctx, io_context::task_t* task) const {
-        if (!task->__M_custom_cancellation) {
-            switch (task->__M_cancel_type) {
-            case task_declare::task_decl::__CT_io_uring_based: {
-                ctx->cancel_task(task);
-                break;
-            }
-            case task_declare::task_decl::__CT_invoke_cancel: {
-                task->__M_token(task);
-                break;
-            }
-            case task_declare::task_decl::__CT_no_cancel:
-                break;
-            }
-        } else {
-            task->__M_custom_cancellation->cancel(task);
-        }
-    }
-};
-
 template <typename Operation, typename CompletionToken,
           typename EnableReferenceCount>
 int async_combine_impl<Operation, CompletionToken,
                        EnableReferenceCount>::operator()(io_context::task_t*) {
     for (auto* task : __M_subtasks) {
-        detail::async_operation<detail::tags::async_combine_cancel_and_submit>()
-            .cancel(&get_associated_io_context(), task);
+        detail::async_operation<detail::tags::unified_cancel>().cancel(
+            &get_associated_io_context(), task);
     }
     return 0;
 }

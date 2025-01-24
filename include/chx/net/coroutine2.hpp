@@ -409,7 +409,8 @@ template <typename T> struct [[nodiscard]] awaitable_view {
     }
     cancellation_signal get_cancellation_signal() {
         cancellation_signal s;
-        detail::cancellation_assign()(get_associated_task(), s);
+        detail::async_operation<detail::tags::cancellation_assign>()(
+            s, get_associated_task());
         return std::move(s);
     }
 

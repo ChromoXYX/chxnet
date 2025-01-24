@@ -13,6 +13,7 @@
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
 #include "./detail/interrupter.hpp"
+#include "./detail/tracker.hpp"
 #include "./error_code.hpp"
 #include "./exception.hpp"
 
@@ -37,10 +38,9 @@ struct use_delivery {};
 struct interrupter {};
 }  // namespace tags
 
-struct task_declare::task_decl {
+struct task_declare::task_decl : enable_weak_from_this<task_decl> {
     CHXNET_NONCOPYABLE
     struct cancellation_controller_base {
-        virtual void operator()(cancellation_signal&) = 0;
         virtual void cancel(task_decl*) = 0;
         virtual ~cancellation_controller_base() = default;
     };
@@ -75,13 +75,23 @@ struct task_declare::task_decl {
                                 alignof(std::max_align_t)>
         __M_token;
 
-    void reset() noexcept(true) {
-        __M_ec.clear();
-        __M_res = 0;
-        __M_notif = false;
-        __M_cancel_type = __CT_io_uring_based;
+    void reset() {
+        try {
+            __M_additional = 0;
+            __M_avail = true;
+            __M_option1 = false;
+            __M_notif = false;
+            __M_cancel_type = __CT_io_uring_based;
+            __M_option5 = __M_option6 = __M_option7 = false;
+            __M_ec.clear();
+            __M_res = 0;
 
-        __M_custom_cancellation.reset();
+            __M_custom_cancellation.reset();
+            this->renew();
+            __M_token.destruct();
+        } catch (const std::exception&) {
+            rethrow_with_fatal(std::current_exception());
+        }
     }
 
     constexpr io_context& get_associated_io_context() noexcept(true) {
@@ -137,7 +147,6 @@ class io_context {
                 __M_task_pool.pop();
                 r = __M_outstanding_task_list.emplace_back(std::move(ptr))
                         .get();
-                r->reset();
             } else {
                 r = __M_outstanding_task_list.emplace_back(new task_t(this))
                         .get();
@@ -155,6 +164,7 @@ class io_context {
                                 __M_outstanding_task_list.end(),
                                 [&](const auto& p) { return p.get() == task; });
         std::unique_ptr ptr = std::move(*loc);
+        ptr->reset();
         __M_outstanding_task_list.erase(loc);
         if (__M_task_pool.size() < 256) {
             __M_task_pool.push(std::move(ptr));

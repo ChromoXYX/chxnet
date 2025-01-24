@@ -30,16 +30,17 @@ net::task task2(net::semaphore<int>& q) {
 
 int main() {
     net::io_context ctx;
+    net::fixed_timer timer(ctx);
     net::semaphore<int> queue(ctx);
     co_spawn(ctx, task(queue), [](const std::error_code& e) {
         std::cout << "#1 Coroutine finished\n";
     });
-    net::async_timeout(ctx, std::chrono::seconds(1),
-                       [&](const std::error_code& e) {
-                           std::cout << "Timeout\n";
-                           queue.release(42);
-                           std::cout << "Semaphore pop\n";
-                       });
+    timer.async_register(std::chrono::seconds(1),
+                         [&](const std::error_code& e) {
+                             std::cout << "Timeout\n";
+                             queue.release(42);
+                             std::cout << "Semaphore pop\n";
+                         });
     ctx.run();
     std::cout << "Remain outstanding tasks = " << ctx.outstanding_tasks()
               << "\n";
