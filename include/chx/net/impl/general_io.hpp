@@ -8,6 +8,8 @@
 #include "../async_combine.hpp"
 #include "../dynamic_buffer.hpp"
 
+#include "../detail/io_uring_task_getter.hpp"
+
 #include <netinet/in.h>
 
 namespace chx::net::detail::tags {
@@ -252,8 +254,8 @@ operator()(io_context* ctx, Socket* sock,
             task,
             [](auto& completion_token,
                io_context::task_t* self) mutable -> int {
-                completion_token(self->__M_ec,
-                                 static_cast<std::size_t>(self->__M_res));
+                completion_token(get_ec(self),
+                                 static_cast<std::size_t>(get_res(self)));
                 return 0;
             },
             std::forward<CompletionToken>(completion_token))),
@@ -273,8 +275,8 @@ operator()(io_context* ctx, Socket* sock, const const_buffer& buf,
             task,
             [](auto& completion_token,
                io_context::task_t* self) mutable -> int {
-                completion_token(self->__M_ec,
-                                 static_cast<std::size_t>(self->__M_res));
+                completion_token(get_ec(self),
+                                 static_cast<std::size_t>(get_res(self)));
                 return 0;
             },
             std::forward<CompletionToken>(completion_token))),
@@ -295,11 +297,12 @@ operator()(io_context* ctx, Socket* sock, const mutable_buffer& buffer,
             task,
             [](auto& completion_token,
                io_context::task_t* self) mutable -> int {
-                if (self->__M_res == 0) {
-                    assign_ec(self->__M_ec, errc::eof);
+                std::error_code e;
+                int res = get_res(self);
+                if (res == 0) {
+                    assign_ec(e, errc::eof);
                 }
-                completion_token(self->__M_ec,
-                                 static_cast<std::size_t>(self->__M_res));
+                completion_token(e, static_cast<std::size_t>(res));
                 return 0;
             },
             std::forward<CompletionToken>(completion_token))),
@@ -342,8 +345,8 @@ operator()(io_context* ctx, Socket* sock,
             task,
             [](auto& completion_token,
                io_context::task_t* self) mutable -> int {
-                completion_token(self->__M_ec,
-                                 static_cast<std::size_t>(self->__M_res));
+                completion_token(get_ec(self),
+                                 static_cast<std::size_t>(get_res(self)));
                 return 0;
             },
             std::forward<CompletionToken>(completion_token))),

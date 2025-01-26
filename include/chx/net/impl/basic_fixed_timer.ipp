@@ -24,7 +24,7 @@ template <> struct async_operation<tags::fixed_timer_controller> {
                 if (__M_tp != __zero_time_point<Clock>) {
                     auto ite = find_in_heap();
                     if (ite != __M_timer->__M_heap.end()) {
-                        assign_ec(__M_task->__M_ec, errc::operation_canceled);
+                        __M_task->__M_res = errc::operation_canceled;
                         std::unique_ptr ptr = std::move(ite->second);
                         __M_timer->__M_heap.erase(ite);
                         __M_timer->__M_trash.push_back(std::move(ptr));
@@ -32,7 +32,7 @@ template <> struct async_operation<tags::fixed_timer_controller> {
                 } else {
                     auto pos = find_in_paused();
                     if (pos != __M_timer->__M_paused.end()) {
-                        assign_ec(__M_task->__M_ec, errc::operation_canceled);
+                        __M_task->__M_res = errc::operation_canceled;
                         __M_timer->__M_trash.emplace_back(std::move(*pos));
                         __M_timer->__M_paused.erase(pos);
                     }
@@ -148,7 +148,6 @@ template <> struct async_operation<tags::fixed_timer2> {
                            std::make_unique<io_context::task_t>(timer->__M_ctx))
                        .get();
         }
-        task->__M_avail = true;
         task->__M_additional = reinterpret_cast<std::uint64_t>(timer);
         task->__M_custom_cancellation.reset(
             new async_operation<tags::fixed_timer_controller>::controller<
@@ -161,7 +160,8 @@ template <> struct async_operation<tags::fixed_timer2> {
                 task,
                 [](auto& token, io_context::task_t* self) mutable {
                     assert(self);
-                    token(self->__M_ec);
+                    token(self->__M_res == 0 ? std::error_code{}
+                                             : make_ec(self->__M_res));
                     return 0;
                 },
                 std::forward<BindCompletionToken>(bind_completion_token))),

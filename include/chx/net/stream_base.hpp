@@ -6,6 +6,8 @@
 #include "./impl/general_async_close.hpp"
 #include "./impl/general_io.hpp"
 
+#include "./detail/io_uring_task_getter.hpp"
+
 namespace chx::net::detail::tags {
 struct cancel_fd {};
 struct sock_poll {};
@@ -314,7 +316,7 @@ operator()(io_context* ctx, Sock& sock, int event,
         task->__M_token.emplace(detail::async_token_generate(
             task,
             [](auto& token, io_context::task_t* self) -> int {
-                token(self->__M_ec, self->__M_res);
+                token(get_ec(self), get_res(self));
                 return 0;
             },
             completion_token)),

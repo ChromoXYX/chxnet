@@ -5,6 +5,8 @@
 
 #include "./io_context.hpp"
 
+#include "./detail/io_uring_task_getter.hpp"
+
 namespace chx::net::detail::tags {
 struct ktimer {};
 }  // namespace chx::net::detail::tags
@@ -113,7 +115,7 @@ chx::net::detail::async_operation<chx::net::detail::tags::ktimer>::operator()(
         task->__M_token.emplace(detail::async_token_generate(
             task,
             [](auto& completion_token, io_context::task_t* self) -> int {
-                completion_token(self->__M_ec);
+                completion_token(get_ec(self));
                 return 0;
             },
             completion_token)),

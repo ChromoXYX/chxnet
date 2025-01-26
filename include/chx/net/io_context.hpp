@@ -52,8 +52,6 @@ struct task_decl : detail::enable_weak_from_this<task_decl> {
 
     std::uint64_t __M_additional = {};
 
-    bool __M_avail = true;
-    bool __M_option1 = false;
     union {
         bool __M_notif = false;
         bool __M_persist;
@@ -63,12 +61,11 @@ struct task_decl : detail::enable_weak_from_this<task_decl> {
         __CT_invoke_cancel,
         __CT_no_cancel
     } __M_cancel_type = __CT_io_uring_based;
-    bool __M_option5 = false;
-    bool __M_option6 = false;
-    bool __M_option7 = false;
 
-    std::error_code __M_ec;
-    int __M_res;
+    union {
+        std::int64_t __M_res = 0;
+        io_uring_cqe* __M_cqe;
+    };
 
     std::unique_ptr<cancellation_controller_base> __M_custom_cancellation;
 
@@ -79,12 +76,9 @@ struct task_decl : detail::enable_weak_from_this<task_decl> {
     void reset() {
         try {
             __M_additional = 0;
-            __M_avail = true;
-            __M_option1 = false;
             __M_notif = false;
             __M_cancel_type = __CT_io_uring_based;
-            __M_option5 = __M_option6 = __M_option7 = false;
-            __M_ec.clear();
+
             __M_res = 0;
 
             __M_custom_cancellation.reset();
@@ -152,7 +146,6 @@ class io_context {
                 r = __M_outstanding_task_list.emplace_back(new task_t(this))
                         .get();
             }
-            r->__M_avail = false;
             return r;
         } catch (const std::exception&) {
             rethrow_with_fatal(std::make_exception_ptr(
@@ -214,17 +207,12 @@ class io_context {
   private:
     void __handle_task(io_uring_cqe* cqe) {
         task_t* task = static_cast<task_t*>(io_uring_cqe_get_data(cqe));
-        task->__M_res = cqe->res;
+        task->__M_cqe = cqe;
         if (task->__M_notif) {
             // if task is aware of notif, or is persist
             task->__M_token(task);
         } else {
             assert(!(cqe->flags & IORING_CQE_F_MORE));
-            if (cqe->res < 0) {
-                assign_ec(task->__M_ec, -cqe->res);
-            } else {
-                task->__M_ec.clear();
-            }
             try {
                 task->__M_token(task);
             } catch (const std::exception&) {

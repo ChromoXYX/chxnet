@@ -3,6 +3,8 @@
 #include "../io_context.hpp"
 #include "../ip.hpp"
 
+#include "../detail/io_uring_task_getter.hpp"
+
 namespace chx::net::ip::detail::tags {
 struct connect2 {};
 struct async_accept {};
@@ -89,7 +91,7 @@ struct chx::net::detail::async_operation<chx::net::ip::detail::tags::connect2> {
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* self) mutable -> int {
-                    token(self->__M_ec);
+                    token(get_ec(self));
                     return 0;
                 },
                 completion_token)),
@@ -118,11 +120,11 @@ struct chx::net::detail::async_operation<
                     auto* acceptor =
                         reinterpret_cast<typename Protocol::acceptor*>(
                             self->__M_additional);
-                    completion_token(
-                        self->__M_ec,
-                        typename Protocol::socket(
-                            acceptor->get_associated_io_context(),
-                            self->__M_res > 0 ? self->__M_res : -1));
+                    int res = get_res(self);
+                    completion_token(get_ec(self),
+                                     typename Protocol::socket(
+                                         acceptor->get_associated_io_context(),
+                                         res > 0 ? res : -1));
                     return 0;
                 },
                 std::forward<CompletionToken>(completion_token))),

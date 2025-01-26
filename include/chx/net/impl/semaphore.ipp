@@ -56,7 +56,7 @@ template <> struct async_operation<tags::task_queue_tag> {
                         std::vector<std::unique_ptr<io_context::task_t>> trash =
                             std::move(guard->__M_trash);
                         for (auto& ptr : trash) {
-                            assign_ec(ptr->__M_ec, errc::operation_canceled);
+                            ptr->__M_res = errc::operation_canceled;
                             ptr->__M_token(ptr.get());
                         }
                     }
@@ -88,11 +88,12 @@ template <> struct async_operation<tags::task_queue_tag> {
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* task) {
-                    token(task->__M_ec, !task->__M_ec
-                                            ? std::optional<Resource>(std::move(
-                                                  *reinterpret_cast<Resource*>(
-                                                      task->__M_additional)))
-                                            : std::nullopt);
+                    int res = task->__M_res;
+                    token(res == 0 ? std::error_code{} : make_ec(res),
+                          res == 0 ? std::optional<Resource>(
+                                         std::move(*reinterpret_cast<Resource*>(
+                                             task->__M_additional)))
+                                   : std::nullopt);
                     return 0;
                 },
                 std::forward<BindCompletionToken>(bind_completion_token))),

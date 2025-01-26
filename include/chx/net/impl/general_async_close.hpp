@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../io_context.hpp"
+#include "../detail/io_uring_task_getter.hpp"
 
 namespace chx::net::detail {
 namespace tags {
@@ -20,10 +21,11 @@ template <> struct async_operation<tags::async_close> {
                 [](auto& token, io_context::task_t* self) -> int {
                     Stream* stream =
                         reinterpret_cast<Stream*>(self->__M_additional);
-                    if (self->__M_ec != errc::operation_canceled) {
+                    auto ec = get_ec(self);
+                    if (ec != errc::operation_canceled) {
                         stream->__M_fd = -1;
                     }
-                    token(self->__M_ec);
+                    token(ec);
                     return 0;
                 },
                 completion_token)),

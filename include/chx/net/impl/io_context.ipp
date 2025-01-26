@@ -46,7 +46,7 @@ decltype(auto)
 chx::net::io_context::async_nop(CompletionToken&& completion_token) {
     return async_delivery<const std::error_code&>(
         [](auto& token, task_t* self) mutable -> int {
-            token(self->__M_ec);
+            token(std::error_code{});
             return 0;
         },
         std::forward<CompletionToken>(completion_token));

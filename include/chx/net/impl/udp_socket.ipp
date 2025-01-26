@@ -372,8 +372,8 @@ operator()(io_context* ctx, ip::udp::socket* sock, const const_buffer& buffer,
             task,
             [](auto& completion_token,
                io_context::task_t* self) mutable -> int {
-                completion_token(self->__M_ec,
-                                 static_cast<std::size_t>(self->__M_res));
+                completion_token(get_ec(self),
+                                 static_cast<std::size_t>(get_res(self)));
                 return 0;
             },
             std::forward<CompletionToken>(completion_token))),

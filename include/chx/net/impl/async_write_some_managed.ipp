@@ -6,6 +6,8 @@
 #include "../async_combine.hpp"
 #include "../buffer_sequence.hpp"
 
+#include "../detail/io_uring_task_getter.hpp"
+
 namespace chx::net::detail::tags {
 struct write_managed {};
 struct writev_managed {};
@@ -32,7 +34,7 @@ struct chx::net::detail::async_operation<
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* self) mutable -> int {
-                    token(self->__M_ec);
+                    token(get_ec(self));
                     return 0;
                 },
                 completion_token)),
@@ -125,8 +127,8 @@ struct chx::net::detail::async_operation<
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* self) mutable -> int {
-                    token(self->__M_ec,
-                          static_cast<std::size_t>(self->__M_res));
+                    token(get_ec(self),
+                          static_cast<std::size_t>(get_res(self)));
                     return 0;
                 },
                 completion_token)),

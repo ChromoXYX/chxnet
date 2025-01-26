@@ -61,9 +61,7 @@ struct async_combine_impl
         async_operation<tags::async_combine_use_delivery>()(
             &get_associated_io_context(),
             [](auto& token, io_context::task_t* self) mutable -> int {
-                if (!self->__M_ec) {
-                    token();
-                }
+                token();
                 return 0;
             },
             next());
@@ -78,9 +76,7 @@ struct async_combine_impl
         async_operation<tags::async_combine_use_delivery>()(
             &get_associated_io_context(),
             [](auto& token, io_context::task_t* self) mutable -> int {
-                if (!self->__M_ec) {
-                    token();
-                }
+                token();
                 return 0;
             },
             next());

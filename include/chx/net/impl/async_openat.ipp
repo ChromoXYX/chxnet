@@ -72,9 +72,9 @@ template <> struct async_operation<tags::openat> {
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* self) mutable -> int {
-                    token(self->__M_ec,
+                    token(get_ec(self),
                           file(self->get_associated_io_context(),
-                               self->__M_res > 0 ? self->__M_res : -1));
+                               get_res(self) > 0 ? get_res(self) : -1));
                     return 0;
                 },
                 completion_token)),

@@ -22,10 +22,12 @@ template <> struct async_operation<tags::file_openat2> {
                 task,
                 [](auto& token, io_context::task_t* self) mutable -> int {
                     auto* f = reinterpret_cast<file*>(self->__M_additional);
-                    if (!self->__M_ec) {
-                        f->set_fd(self->__M_res);
+                    int res = get_res(self);
+                    auto ec = get_ec(self);
+                    if (!ec) {
+                        f->set_fd(res);
                     }
-                    token(self->__M_ec);
+                    token(ec);
                     return 0;
                 },
                 completion_token)),

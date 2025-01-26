@@ -24,7 +24,7 @@ decltype(auto) prep_reusable_impl(net::io_context::task_t* t,
         t->__M_token.emplace(net::detail::async_token_generate(
             t,
             [](auto& token, net::io_context::task_t* t) -> int {
-                token(t->__M_ec);
+                token(std::error_code{});
                 return 0;
             },
             completion_token)),

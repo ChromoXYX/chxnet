@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./async_combine.hpp"
+#include "./detail/io_uring_task_getter.hpp"
 
 namespace chx::net {
 namespace detail {
@@ -27,7 +28,7 @@ template <> struct async_operation<tags::async_sendfile_splice> {
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* self) mutable -> int {
-                    token(self->__M_ec, self->__M_res);
+                    token(get_ec(self), get_res(self));
                     return 0;
                 },
                 completion_token)),

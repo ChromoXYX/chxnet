@@ -41,7 +41,7 @@ class basic_fixed_timer
         while (!__M_heap.empty() && __M_heap.top().first <= curr) {
             std::unique_ptr ptr = std::move(__M_heap.top().second);
             __M_heap.pop();
-            ptr->__M_ec.clear();
+            ptr->__M_res = 0;
             ptr->__M_token(ptr.get());
         }
         do_loop2();
