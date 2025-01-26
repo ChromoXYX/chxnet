@@ -1,7 +1,5 @@
 #pragma once
 
-#include <type_traits>
-
 namespace chx::net::detail {
 struct noncopyable {
     noncopyable() = default;
@@ -10,23 +8,17 @@ struct noncopyable {
 
     noncopyable& operator=(const noncopyable&) = delete;
     noncopyable& operator=(noncopyable&&) = default;
-
-  private:
-    struct noncopyable_test;
-    struct noncopyable_check;
 };
-struct noncopyable::noncopyable_test {
-    noncopyable_test() = default;
-    noncopyable_test(noncopyable_test&&) = default;
 
-    noncopyable_test& operator=(noncopyable_test&&) = default;
+struct nonmoveable {
+    nonmoveable() = default;
+    nonmoveable(const nonmoveable&) = default;
+    nonmoveable(nonmoveable&&) = delete;
 
-    noncopyable __noncopyable[0];
-};
-struct noncopyable::noncopyable_check {
-    static_assert(!std::is_copy_constructible_v<noncopyable_test> &&
-                  !std::is_copy_assignable_v<noncopyable_test>);
+    nonmoveable& operator=(const nonmoveable&) = default;
+    nonmoveable& operator=(nonmoveable&&) = delete;
 };
 
 #define CHXNET_NONCOPYABLE ::chx::net::detail::noncopyable __noncopyable[0];
+#define CHXNET_NONMOVEABLE ::chx::net::detail::nonmoveable __nonmoveable[0];
 }  // namespace chx::net::detail

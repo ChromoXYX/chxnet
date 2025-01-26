@@ -18,15 +18,15 @@ template <> struct async_operation<tags::unified_cancel> {
     void cancel(io_context* ctx, io_context::task_t* task) const {
         if (!task->__M_custom_cancellation) {
             switch (task->__M_cancel_type) {
-            case task_declare::task_decl::__CT_io_uring_based: {
+            case task_decl::__CT_io_uring_based: {
                 ctx->cancel_task(task);
                 break;
             }
-            case task_declare::task_decl::__CT_invoke_cancel: {
+            case task_decl::__CT_invoke_cancel: {
                 task->__M_token(task);
                 break;
             }
-            case task_declare::task_decl::__CT_no_cancel:
+            case task_decl::__CT_no_cancel:
                 break;
             }
         } else {

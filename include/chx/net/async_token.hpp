@@ -1,7 +1,7 @@
 #pragma once
 
 #include "./attribute.hpp"
-#include "./detail/task_declare.hpp"
+#include "./task_decl.hpp"
 
 #include <cassert>
 
@@ -32,8 +32,7 @@ async_token_bind(CompletionToken&& token) noexcept(true) {
 
 template <typename FinalFunctor, typename CompletionToken>
 constexpr decltype(auto)
-async_token_generate(task_declare::task_decl* task,
-                     FinalFunctor&& final_functor,
+async_token_generate(task_decl* task, FinalFunctor&& final_functor,
                      CompletionToken&& token) noexcept(true) {
     assert(task);
     if constexpr (is_async_token<std::decay_t<CompletionToken>>::value) {
@@ -43,11 +42,11 @@ async_token_generate(task_declare::task_decl* task,
         // what if final_functor is fake_final_functor? here, completion_token
         // will be move into lambda, so there is no need to worry about the
         // lifetime for the completion_token.
-        return [final_functor = std::move(final_functor),
-                token = std::move(token)](
-                   task_declare::task_decl* t) mutable -> decltype(auto) {
-            return final_functor(token, t);
-        };
+        return
+            [final_functor = std::move(final_functor),
+             token = std::move(token)](task_decl* t) mutable -> decltype(auto) {
+                return final_functor(token, t);
+            };
     }
 }
 
@@ -64,9 +63,8 @@ async_token_init(TypeIdentity, CompletionToken&& token) noexcept(true) {
 template <int Id> struct fake_final_functor {
     // ONLY return LVALUE reference
     template <typename GeneratedToken>
-    constexpr GeneratedToken&
-    operator()(GeneratedToken& generated_token,
-               task_declare::task_decl*) noexcept(true) {
+    constexpr GeneratedToken& operator()(GeneratedToken& generated_token,
+                                         task_decl*) noexcept(true) {
         return generated_token;
     }
 };

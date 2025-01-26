@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <mutex>
 
-#include "./detail/task_declare.hpp"
+#include "./task_decl.hpp"
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
 #include "./detail/interrupter.hpp"
@@ -37,8 +37,9 @@ namespace tags {
 struct use_delivery {};
 struct interrupter {};
 }  // namespace tags
+}  // namespace detail
 
-struct task_declare::task_decl : enable_weak_from_this<task_decl> {
+struct task_decl : detail::enable_weak_from_this<task_decl> {
     CHXNET_NONCOPYABLE
     struct cancellation_controller_base {
         virtual void cancel(task_decl*) = 0;
@@ -101,7 +102,6 @@ struct task_declare::task_decl : enable_weak_from_this<task_decl> {
         return __M_token.underlying_data();
     }
 };
-}  // namespace detail
 
 class io_context {
     CHXNET_NONCOPYABLE
@@ -113,7 +113,7 @@ class io_context {
      * @brief Type which carries necessary data for a single async task.
      *
      */
-    using task_t = detail::task_declare::task_decl;
+    using task_t = task_decl;
 
   protected:
     struct message_base {
