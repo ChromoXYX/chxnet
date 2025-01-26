@@ -105,6 +105,7 @@ struct task_decl : detail::enable_weak_from_this<task_decl> {
 
 class io_context {
     CHXNET_NONCOPYABLE
+    CHXNET_NONMOVEABLE
 
     template <typename Tag> friend struct detail::async_operation;
 

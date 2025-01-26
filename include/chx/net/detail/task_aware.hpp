@@ -13,7 +13,7 @@ template <typename BindCompletionToken> struct task_aware_ops {
         : bind_completion_token(std::forward<BCT>(bct)) {}
 
     template <typename FinalFunctor>
-    decltype(auto) generate_token(io_context::task_t* task,
+    decltype(auto) generate_token(task_decl* task,
                                   FinalFunctor&& final_functor) {
         bind_completion_token.aware(task);
         return async_token_generate(task,

@@ -51,8 +51,9 @@ void wait_loop() {
                 t->__M_token(t);
                 wait_loop();
             } else {
-                t->__M_ec = net::make_ec(net::errc::operation_canceled);
-                t->__M_token(t);
+                std::cout << "Now we will release task that coro waiting "
+                             "at\nCoro should wait forever\n";
+                net::detail::async_operation<my_tag>().release(t);
             }
         });
 }
@@ -60,7 +61,7 @@ void wait_loop() {
 
 net::task task() {
     t = net::detail::async_operation<my_tag>()(co_await net::this_context);
-    auto a = prep_reusable(t, net::use_reusable_coro);
+    auto a = prep_reusable(t, net::use_multishot_coro);
     wait_loop();
 
     try {
@@ -70,20 +71,16 @@ net::task task() {
             std::cout << "End wait\n";
         }
     } catch (const std::exception& e) {
-        std::cout << "Loop Finished, exception: " << e.what() << "\n";
+        std::cout << "Loop Exit, exception: " << e.what() << "\n";
     }
 }
-void example(){
-    
-}
+void example() {}
 
 int main() {
     net::io_context ctx;
     net::fixed_timer timer(ctx);
     ::timer = &timer;
-    co_spawn(ctx, task(), [](const std::error_code&) {
-        std::cout << "Coroutine exit\n";
-        net::detail::async_operation<my_tag>().release(t);
-    });
+    co_spawn(ctx, task(),
+             [](const std::error_code&) { std::cout << "Coroutine exit\n"; });
     ctx.run();
 }

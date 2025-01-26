@@ -446,11 +446,11 @@ template <typename T> struct [[nodiscard]] awaitable_view {
     }
 };
 
-template <typename T> struct [[nodiscard]] re_awaitable {
+template <typename T> struct [[nodiscard]] multishot_awaitable {
     CHXNET_NONCOPYABLE
 
     struct view {
-        friend struct re_awaitable;
+        friend struct multishot_awaitable;
 
         CHXNET_NONCOPYABLE
 
@@ -485,12 +485,12 @@ template <typename T> struct [[nodiscard]] re_awaitable {
         constexpr awa operator co_await() noexcept(true) { return {*this}; }
 
       protected:
-        view(re_awaitable* impl) noexcept(true) : __M_impl(impl) {
+        view(multishot_awaitable* impl) noexcept(true) : __M_impl(impl) {
             __M_impl->__M_view = this;
         }
 
         std::queue<std::variant<std::error_code, T>> __M_q;
-        re_awaitable* __M_impl = nullptr;
+        multishot_awaitable* __M_impl = nullptr;
 
         bool __await_ready() noexcept(true) {
             return !__M_q.empty() || !__M_impl;
@@ -517,8 +517,9 @@ template <typename T> struct [[nodiscard]] re_awaitable {
     std::coroutine_handle<> __M_h = {};
     io_context::task_t* __M_t = nullptr;
 
-    constexpr re_awaitable(io_context::task_t* t) noexcept(true) : __M_t(t) {}
-    re_awaitable(re_awaitable&& other) noexcept(true)
+    constexpr multishot_awaitable(io_context::task_t* t) noexcept(true)
+        : __M_t(t) {}
+    multishot_awaitable(multishot_awaitable&& other) noexcept(true)
         : __M_view(std::exchange(other.__M_view, nullptr)),
           __M_h(std::exchange(other.__M_h, {})),
           __M_t(std::exchange(other.__M_t, nullptr)) {
@@ -526,7 +527,7 @@ template <typename T> struct [[nodiscard]] re_awaitable {
             __M_view->__M_impl = this;
         }
     }
-    ~re_awaitable() {
+    ~multishot_awaitable() {
         if (__M_view) {
             __M_view->__M_impl = nullptr;
         }
@@ -776,10 +777,10 @@ template <typename AwaitableView> struct callable_impl {
     }
 };
 
-template <bool use_reusable, typename... Ts> struct ops {
+template <bool use_multishot, typename... Ts> struct ops {
     using value_type = std::decay_t<typename get_tail_type<Ts...>::type>;
     using awaitable_inter_type = std::conditional_t<
-        use_reusable, re_awaitable<value_type>,
+        use_multishot, multishot_awaitable<value_type>,
         typename awaitable_view<value_type>::awaitable_inter>;
 
     using callable_type = callable_impl<awaitable_inter_type>;
@@ -802,14 +803,14 @@ template <bool use_reusable, typename... Ts> struct ops {
     }
 };
 
-template <bool use_reusable> struct main_op {
+template <bool use_multishot> struct main_op {
     using attribute_type = attribute<async_token>;
 
     template <typename... Signature>
     constexpr auto
     bind(sfinae_placeholder<std::enable_if_t<(sizeof...(Signature) > 0)>> _ =
              detail::sfinae) const noexcept(true) {
-        return ops<use_reusable, Signature...>{};
+        return ops<use_multishot, Signature...>{};
     }
 };
 
@@ -853,8 +854,8 @@ co_spawn_operation(Task&&) -> co_spawn_operation<std::remove_reference_t<Task>>;
 using use_coro_t = detail::coroutine::main_op<false>;
 inline static constexpr use_coro_t use_coro = {};
 
-using use_reusable_coro_t = detail::coroutine::main_op<true>;
-inline static constexpr use_reusable_coro_t use_reusable_coro = {};
+using use_multishot_coro_t = detail::coroutine::main_op<true>;
+inline static constexpr use_multishot_coro_t use_multishot_coro = {};
 
 /**
  * @brief Spawn a task in io_context.
