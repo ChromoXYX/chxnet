@@ -24,7 +24,7 @@ template <> struct async_operation<tags::fixed_timer_controller> {
                 if (__M_tp != __zero_time_point<Clock>) {
                     auto ite = find_in_heap();
                     if (ite != __M_timer->__M_heap.end()) {
-                        __M_task->__M_res = errc::operation_canceled;
+                        __M_task->__M_res = ECANCELED;
                         std::unique_ptr ptr = std::move(ite->second);
                         __M_timer->__M_heap.erase(ite);
                         __M_timer->__M_trash.push_back(std::move(ptr));
@@ -32,7 +32,7 @@ template <> struct async_operation<tags::fixed_timer_controller> {
                 } else {
                     auto pos = find_in_paused();
                     if (pos != __M_timer->__M_paused.end()) {
-                        __M_task->__M_res = errc::operation_canceled;
+                        __M_task->__M_res = ECANCELED;
                         __M_timer->__M_trash.emplace_back(std::move(*pos));
                         __M_timer->__M_paused.erase(pos);
                     }

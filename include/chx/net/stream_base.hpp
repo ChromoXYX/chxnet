@@ -28,6 +28,9 @@ template <>
 struct chx::net::detail::async_operation<chx::net::detail::tags::sock_poll> {
     template <typename Sock, typename CompletionToken>
     decltype(auto) operator()(io_context*, Sock&, int, CompletionToken&&);
+
+    template <typename Sock, typename BindCompletionToken>
+    decltype(auto) multi(io_context*, Sock&, int, BindCompletionToken&&);
 };
 
 namespace chx::net {
@@ -187,6 +190,10 @@ class stream_base {
     template <typename CompletionToken>
     decltype(auto) async_poll(int event, CompletionToken&& completion_token);
 
+    template <typename CompletionToken>
+    decltype(auto) async_poll_multi(int event,
+                                    CompletionToken&& completion_token);
+
     template <typename ConstBufferSequence, typename CompletionToken>
     decltype(auto) async_write_some(
         ConstBufferSequence&& const_buffer_sequence,
@@ -329,6 +336,40 @@ chx::net::stream_base::async_poll(int event,
                                   CompletionToken&& completion_token) {
     return detail::async_operation<detail::tags::sock_poll>()(
         &get_associated_io_context(), *this, event,
-        detail::async_token_bind<const std::error_code&, int>(
+        detail::async_token_bind<const std::error_code&, unsigned short>(
+            std::forward<CompletionToken>(completion_token)));
+}
+
+template <typename Sock, typename BindCompletionToken>
+decltype(auto)
+chx::net::detail::async_operation<chx::net::detail::tags::sock_poll>::multi(
+    io_context* ctx, Sock& sock, int event,
+    BindCompletionToken&& bind_completion_token) {
+    io_context::task_t* task = ctx->acquire();
+    task->__M_notif = true;
+
+    io_uring_sqe* sqe = ctx->get_sqe(task);
+    io_uring_prep_poll_add(sqe, sock.native_handler(), event);
+    sqe->len |= IORING_POLL_ADD_MULTI;
+
+    return async_token_init(
+        task->__M_token.emplace(async_token_generate(
+            task,
+            [](auto& token, io_context::task_t* self) -> int {
+                token(get_ec(self), self->__M_cqe->flags & IORING_CQE_F_MORE,
+                      get_res(self));
+                return 0;
+            },
+            bind_completion_token)),
+        bind_completion_token);
+}
+
+template <typename CompletionToken>
+decltype(auto)
+chx::net::stream_base::async_poll_multi(int event,
+                                        CompletionToken&& completion_token) {
+    return detail::async_operation<detail::tags::sock_poll>().multi(
+        &get_associated_io_context(), *this, event,
+        detail::async_token_bind<const std::error_code&, bool, unsigned short>(
             std::forward<CompletionToken>(completion_token)));
 }

@@ -14,6 +14,7 @@
 #include "./detail/noncopyable.hpp"
 #include "./detail/interrupter.hpp"
 #include "./detail/tracker.hpp"
+#include "./detail/scope_exit.hpp"
 #include "./error_code.hpp"
 #include "./exception.hpp"
 
@@ -52,10 +53,8 @@ struct task_decl : detail::enable_weak_from_this<task_decl> {
 
     std::uint64_t __M_additional = {};
 
-    union {
-        bool __M_notif = false;
-        bool __M_persist;
-    };
+    bool __M_notif = false;
+    bool __M_persist = false;
     enum __CancelType : std::uint8_t {
         __CT_io_uring_based,
         __CT_invoke_cancel,
@@ -77,6 +76,7 @@ struct task_decl : detail::enable_weak_from_this<task_decl> {
         try {
             __M_additional = 0;
             __M_notif = false;
+            __M_persist = false;
             __M_cancel_type = __CT_io_uring_based;
 
             __M_res = 0;
@@ -132,6 +132,8 @@ class io_context {
         std::is_nothrow_destructible_v<decltype(__M_outstanding_task_list)>);
 
     detail::interrupter __M_interrupter;
+    detail::interrupter __M_blocker;
+    bool __M_blocked = false;
 
   protected:
     task_t* acquire() {
@@ -153,15 +155,20 @@ class io_context {
         }
     }
 
-    void release(task_t* task) noexcept(true) {
-        auto loc = std::find_if(__M_outstanding_task_list.begin(),
-                                __M_outstanding_task_list.end(),
-                                [&](const auto& p) { return p.get() == task; });
-        std::unique_ptr ptr = std::move(*loc);
-        ptr->reset();
-        __M_outstanding_task_list.erase(loc);
-        if (__M_task_pool.size() < 256) {
-            __M_task_pool.push(std::move(ptr));
+    void release(task_t* task) {
+        try {
+            auto loc =
+                std::find_if(__M_outstanding_task_list.begin(),
+                             __M_outstanding_task_list.end(),
+                             [&](const auto& p) { return p.get() == task; });
+            std::unique_ptr ptr = std::move(*loc);
+            __M_outstanding_task_list.erase(loc);
+            if (__M_task_pool.size() < 256) {
+                ptr->reset();
+                __M_task_pool.push(std::move(ptr));
+            }
+        } catch (const std::exception&) {
+            rethrow_with_fatal(std::current_exception());
         }
     }
 
@@ -208,8 +215,15 @@ class io_context {
     void __handle_task(io_uring_cqe* cqe) {
         task_t* task = static_cast<task_t*>(io_uring_cqe_get_data(cqe));
         task->__M_cqe = cqe;
-        if (task->__M_notif) {
-            // if task is aware of notif, or is persist
+        if (task->__M_notif || task->__M_persist) {
+            detail::scope_exit _(
+                [this,
+                 more = task->__M_persist || (cqe->flags & IORING_CQE_F_MORE),
+                 task]() {
+                    if (!more) {
+                        release(task);
+                    }
+                });
             task->__M_token(task);
         } else {
             assert(!(cqe->flags & IORING_CQE_F_MORE));
@@ -250,7 +264,7 @@ class io_context {
     }
 
     void __run() {
-        while (outstanding_tasks()) {
+        while (outstanding_tasks() || __M_blocked) {
             if (int r = io_uring_submit_and_wait(&__M_ring, 1); r < 0) {
                 // rethrow_with_fatal(std::make_exception_ptr(
                 //     __CHXNET_MAKE_EX_CSTR("io_uring_submit_and_wait
@@ -278,6 +292,13 @@ class io_context {
                             __M_interrupter.do_read(get_sqe(),
                                                     &__M_interrupter);
                             __handle_msg();
+                        } else {
+                            rethrow_with_fatal(
+                                std::make_exception_ptr(strerror(-cqe->res)));
+                        }
+                    } else if (data == static_cast<void*>(&__M_blocker)) {
+                        if (cqe->res > 0) {
+                            __M_blocked = false;
                         } else {
                             rethrow_with_fatal(
                                 std::make_exception_ptr(strerror(-cqe->res)));
@@ -343,6 +364,14 @@ class io_context {
             __run();
         }
     }
+
+    void block() {
+        if (!__M_blocked) {
+            __M_blocker.do_read(get_sqe(), &__M_blocker);
+            __M_blocked = true;
+        }
+    }
+    void unblock() { __M_blocker.do_interrupt(); }
 
     /**
      * @brief Stop handling the completion of async tasks;

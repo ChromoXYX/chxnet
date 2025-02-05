@@ -56,7 +56,7 @@ template <> struct async_operation<tags::task_queue_tag> {
                         std::vector<std::unique_ptr<io_context::task_t>> trash =
                             std::move(guard->__M_trash);
                         for (auto& ptr : trash) {
-                            ptr->__M_res = errc::operation_canceled;
+                            ptr->__M_res = ECANCELED;
                             ptr->__M_token(ptr.get());
                         }
                     }

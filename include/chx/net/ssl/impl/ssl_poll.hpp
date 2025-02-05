@@ -57,9 +57,10 @@ struct ssl_poll : SSLOperation {
                 return perform(cntl);
             } else {
                 if (revents & (POLLRDHUP | POLLHUP)) {
-                    return cntl.complete(net::make_ec(errc::eof));
+                    return cntl.complete(net::make_ec(additional_errc::eof));
                 } else {
-                    return cntl.complete(net::make_ec(errc::internal_error));
+                    return cntl.complete(
+                        net::make_ec(additional_errc::internal_error));
                 }
             }
         } else {

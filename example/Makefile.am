@@ -2,7 +2,7 @@ AM_CXXFLAGS = @__CHXNET_EXEC_CXXFLAGS@ -I../include
 bin_PROGRAMS = chxnet_echo chxnet_udp chxnet_ktimer \
     chxnet_coro chxnet_tls_server \
     chxnet_sendfile chxnet_semaphore \
-    chxnet_reusable_coro
+    chxnet_reusable_coro chxnet_multi
 
 if CHXNET_WITH_LLHTTP
 bin_PROGRAMS += chxnet_http
@@ -26,3 +26,5 @@ chxnet_semaphore_SOURCES = semaphore.cpp
 chxnet_semaphore_LDADD = @__CHXNET_EXEC_LDADD@
 chxnet_reusable_coro_SOURCES = reusable_coro.cpp
 chxnet_reusable_coro_LDADD = @__CHXNET_EXEC_LDADD@
+chxnet_multi_SOURCES = multi.cpp
+chxnet_multi_LDADD = @__CHXNET_EXEC_LDADD@

@@ -45,10 +45,11 @@ struct read_until {
             // string_view to a piece of memory or just empty. and shrink() will
             // take no effect if dyn_buf is empty, pos will also be a valid and
             // meaningful value or just npos.
-            if (!ec || ec == errc::eof) {
+            if (!ec || ec == additional_errc::eof) {
                 dyn_buf.consume(sz);
                 std::size_t pos = StopCond::operator()(dyn_buf.view());
-                if (pos != std::string_view::npos || ec == errc::eof) {
+                if (pos != std::string_view::npos ||
+                    ec == additional_errc::eof) {
                     dyn_buf.shrink();
                     // pos == npos and ec == eof will not occur at same time, if
                     // nothing went wrong.
@@ -300,7 +301,7 @@ operator()(io_context* ctx, Socket* sock, const mutable_buffer& buffer,
                 std::error_code e;
                 int res = get_res(self);
                 if (res == 0) {
-                    assign_ec(e, errc::eof);
+                    assign_ec(e, additional_errc::eof);
                 }
                 completion_token(e, static_cast<std::size_t>(res));
                 return 0;
