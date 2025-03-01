@@ -5,7 +5,10 @@
 
 namespace chx::net {
 struct iovec_buffer : iovec {
-    iovec_buffer() = default;
+    constexpr iovec_buffer() noexcept(true) {
+        iovec::iov_base = nullptr;
+        iovec::iov_len = 0;
+    }
     constexpr iovec_buffer(const iovec_buffer&) = default;
     iovec_buffer(void* ptr, std::size_t len) noexcept(true) {
         iovec::iov_base = ptr;

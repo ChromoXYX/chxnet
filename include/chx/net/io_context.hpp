@@ -13,20 +13,9 @@
 #include "./detail/basic_token_storage.hpp"
 #include "./detail/noncopyable.hpp"
 #include "./detail/interrupter.hpp"
-#include "./detail/tracker.hpp"
 #include "./detail/scope_exit.hpp"
 #include "./error_code.hpp"
 #include "./exception.hpp"
-
-#include <cstdint>
-
-#ifndef CHXNET_TOKEN_STORAGE_SIZE
-#define CHXNET_TOKEN_STORAGE_SIZE 48
-#endif
-
-#ifndef CHXNET_ENABLE_SQPOLL
-#define CHXNET_ENABLE_SQPOLL 0
-#endif
 
 namespace chx::net {
 class io_context;
@@ -39,63 +28,6 @@ struct use_delivery {};
 struct interrupter {};
 }  // namespace tags
 }  // namespace detail
-
-struct task_decl : detail::enable_weak_from_this<task_decl> {
-    CHXNET_NONCOPYABLE
-    struct cancellation_controller_base {
-        virtual void cancel(task_decl*) = 0;
-        virtual ~cancellation_controller_base() = default;
-    };
-
-    task_decl(io_context* p) noexcept(true) : __M_ctx(p) {}
-
-    io_context* __M_ctx = nullptr;
-
-    std::uint64_t __M_additional = {};
-
-    bool __M_notif = false;
-    bool __M_persist = false;
-    enum __CancelType : std::uint8_t {
-        __CT_io_uring_based,
-        __CT_invoke_cancel,
-        __CT_no_cancel
-    } __M_cancel_type = __CT_io_uring_based;
-
-    union {
-        std::int64_t __M_res = 0;
-        io_uring_cqe* __M_cqe;
-    };
-
-    std::unique_ptr<cancellation_controller_base> __M_custom_cancellation;
-
-    detail::basic_token_storage<int(task_decl*), CHXNET_TOKEN_STORAGE_SIZE,
-                                alignof(std::max_align_t)>
-        __M_token;
-
-    void reset() {
-        try {
-            __M_additional = 0;
-            __M_notif = false;
-            __M_persist = false;
-            __M_cancel_type = __CT_io_uring_based;
-
-            __M_res = 0;
-
-            __M_custom_cancellation.reset();
-            this->renew();
-            __M_token.destruct();
-        } catch (const std::exception&) {
-            rethrow_with_fatal(std::current_exception());
-        }
-    }
-
-    constexpr io_context& get_associated_io_context() noexcept(true) {
-        return *__M_ctx;
-    }
-    void* get_underlying_data() noexcept(true) {
-        return __M_token.underlying_data();
-    }
-};
 
 class io_context {
     CHXNET_NONCOPYABLE
@@ -144,10 +76,13 @@ class io_context {
                 __M_task_pool.pop();
                 r = __M_outstanding_task_list.emplace_back(std::move(ptr))
                         .get();
+                // printf("from pool ");
             } else {
+                // printf("new task\n");
                 r = __M_outstanding_task_list.emplace_back(new task_t(this))
                         .get();
             }
+            // printf("%p\n", r);
             return r;
         } catch (const std::exception&) {
             rethrow_with_fatal(std::make_exception_ptr(
@@ -157,6 +92,7 @@ class io_context {
 
     void release(task_t* task) {
         try {
+            assert(task);
             auto loc =
                 std::find_if(__M_outstanding_task_list.begin(),
                              __M_outstanding_task_list.end(),
@@ -335,9 +271,9 @@ class io_context {
     }
 
   public:
-    io_context(std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(task_t))
+    io_context(struct io_uring_params params = {},
+               std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(task_t))
         : __M_ring_sz(static_task_sz > 4096 ? static_task_sz : 4096) {
-        struct io_uring_params params = {};
         params.features |= IORING_FEAT_FAST_POLL | IORING_FEAT_CQE_SKIP;
         if (int r = io_uring_queue_init_params(__M_ring_sz, &__M_ring, &params);
             r != 0) {

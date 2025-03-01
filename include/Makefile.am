@@ -8,6 +8,7 @@ nobase_include_HEADERS = \
     chx/net/file.hpp \
     chx/net/tcp.hpp \
     chx/net/utility.hpp \
+    chx/net/task_decl.hpp \
     chx/net/iovec_buffer.hpp \
     chx/net/udp.hpp \
     chx/net/async_read_until.hpp \
@@ -36,18 +37,21 @@ nobase_include_HEADERS = \
     chx/net/detached.hpp \
     chx/net/buffer_sequence.hpp \
     chx/net/ktimer.hpp \
+    chx/net/detail/is_container.hpp \
     chx/net/detail/task_aware.hpp \
     chx/net/detail/scope_exit.hpp \
     chx/net/detail/type_identity.hpp \
     chx/net/detail/flat_set.hpp \
     chx/net/detail/flat_multimap.hpp \
     chx/net/detail/basic_token_storage.hpp \
-    chx/net/detail/task_declare.hpp \
+    chx/net/detail/monostate_container.hpp \
     chx/net/detail/tracker.hpp \
     chx/net/detail/remove_rvalue_reference.hpp \
     chx/net/detail/noncopyable.hpp \
     chx/net/detail/interrupter.hpp \
+    chx/net/detail/accumulate_size.hpp \
     chx/net/detail/heap.hpp \
+    chx/net/detail/io_uring_task_getter.hpp \
     chx/net/detail/deliver_exception.hpp \
     chx/net/detail/sfinae_placeholder.hpp \
     chx/net/detail/dary_heap.hpp \

@@ -4,7 +4,7 @@
 
 namespace net = chx::net;
 
-net::task test() {
+net::task<> test() {
     // when using chx/net/coroutine.hpp, this coro will lead to crash.
     {
         net::ip::tcp::acceptor acceptor1(
@@ -54,7 +54,7 @@ net::nop_future<int> norm() {
     return {42};
 }
 
-net::task chain1() {
+net::task<> chain1() {
     net::io_context& ctx = co_await net::this_context;
     std::cout << 11 << "\n";
     co_await ctx.async_nop(net::use_coro);

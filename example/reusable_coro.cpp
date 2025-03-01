@@ -59,7 +59,7 @@ void wait_loop() {
 }
 }  // namespace
 
-net::task task() {
+net::task<> task() {
     t = net::detail::async_operation<my_tag>()(co_await net::this_context);
     auto a = prep_reusable(t, net::use_multishot_coro);
     wait_loop();

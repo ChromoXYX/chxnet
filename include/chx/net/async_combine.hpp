@@ -247,7 +247,7 @@ struct async_combine_impl
                 std::forward<FinalFunctor>(final_functor),
                 next_then_callable(self, task,
                                    std::move(async_token_generate(
-                                       task, __CHXNET_FAKE_FINAL_FUNCTOR(),
+                                       task, fake_final_functor(),
                                        std::forward<BindCompletionToken>(
                                            bind_completion_token))(nullptr))));
         }
@@ -312,14 +312,14 @@ template <> struct async_operation<tags::combine> {
         using __ctad_type = decltype(detail::async_combine_impl(
             task,
             std::move(detail::async_token_generate(
-                task, __CHXNET_FAKE_FINAL_FUNCTOR(),
+                task, fake_final_functor(),
                 completion_token)(nullptr)),
             opt, std::forward<OpArgs>(args)...));
         return detail::async_token_init(
             task->__M_token.emplace<__ctad_type>(
                 detail::inplace, task,
                 std::move(detail::async_token_generate(
-                    task, __CHXNET_FAKE_FINAL_FUNCTOR(),
+                    task, fake_final_functor(),
                     completion_token)(nullptr)),
                 opt, std::forward<OpArgs>(args)...),
             completion_token);
@@ -334,14 +334,14 @@ template <> struct async_operation<tags::combine> {
         using __ctad_type = decltype(detail::async_combine_impl(
             std::true_type{}, task,
             std::move(detail::async_token_generate(
-                task, __CHXNET_FAKE_FINAL_FUNCTOR(),
+                task, fake_final_functor(),
                 completion_token)(nullptr)),
             opt, std::forward<OpArgs>(args)...));
         return detail::async_token_init(
             task->__M_token.emplace<__ctad_type>(
                 detail::inplace, std::true_type{}, task,
                 std::move(detail::async_token_generate(
-                    task, __CHXNET_FAKE_FINAL_FUNCTOR(),
+                    task, fake_final_functor(),
                     completion_token)(nullptr)),
                 opt, std::forward<OpArgs>(args)...),
             completion_token);

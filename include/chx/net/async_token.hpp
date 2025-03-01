@@ -60,7 +60,7 @@ async_token_init(TypeIdentity, CompletionToken&& token) noexcept(true) {
     }
 };
 
-template <int Id> struct fake_final_functor {
+struct fake_final_functor {
     // ONLY return LVALUE reference
     template <typename GeneratedToken>
     constexpr GeneratedToken& operator()(GeneratedToken& generated_token,
@@ -68,8 +68,5 @@ template <int Id> struct fake_final_functor {
         return generated_token;
     }
 };
-
-#define __CHXNET_FAKE_FINAL_FUNCTOR                                            \
-    ::chx::net::detail::fake_final_functor<__COUNTER__>
 }  // namespace detail
 }  // namespace chx::net

@@ -47,6 +47,10 @@ class stream_base {
         : __M_ctx(&ctx), __M_fd(fd) {}
     stream_base(stream_base&& other) noexcept(true)
         : __M_ctx(other.__M_ctx), __M_fd(std::exchange(other.__M_fd, -1)) {}
+    stream_base(io_context& ctx, stream_base&& other) noexcept(true)
+        : stream_base(std::move(other)) {
+        __M_ctx = &ctx;
+    }
 
     stream_base& operator=(stream_base&& other) noexcept(true) {
         if (this == &other) {

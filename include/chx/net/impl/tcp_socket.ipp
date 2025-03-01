@@ -57,6 +57,9 @@ class tcp::socket : public detail::basic_socket<tcp> {
     socket(socket&& other) noexcept(true)
         : detail::basic_socket<tcp>(std::move(other)) {}
 
+    socket(io_context& ctx, socket&& other) noexcept(true)
+        : detail::basic_socket<tcp>(ctx, std::move(other)) {}
+
     socket& operator=(socket&& other) noexcept(true) {
         if (this == &other) {
             return *this;

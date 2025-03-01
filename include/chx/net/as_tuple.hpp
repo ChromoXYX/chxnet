@@ -2,7 +2,8 @@
 
 #include "./async_token.hpp"
 #include "./detail/type_identity.hpp"
-#include "attribute.hpp"
+#include "./attribute.hpp"
+#include "./task_decl.hpp"
 
 namespace chx::net {
 namespace detail {
@@ -14,11 +15,10 @@ struct as_tuple_impl : CompletionToken {
         : CompletionToken(std::forward<T>(t)) {}
 
     template <typename FinalFunctor>
-    constexpr decltype(auto) generate_token(io_context::task_t* task,
+    constexpr decltype(auto) generate_token(task_decl* task,
                                             FinalFunctor&& final_functor) {
         return [final_functor = std::forward<FinalFunctor>(final_functor),
-                completion_token =
-                    std::move(*this)](io_context::task_t* self) mutable {
+                completion_token = std::move(*this)](task_decl* self) mutable {
             return final_functor(completion_token, self);
         };
     }
@@ -39,7 +39,7 @@ struct as_tuple_impl3 : FinalFunctor, CallableObj {
     as_tuple_impl3(F&& f, C&& c)
         : FinalFunctor(std::forward<F>(f)), CallableObj(std::forward<C>(c)) {}
 
-    decltype(auto) operator()(io_context::task_t* self) {
+    decltype(auto) operator()(task_decl* self) {
         return FinalFunctor::operator()(static_cast<CallableObj&>(*this), self);
     }
 };
@@ -72,12 +72,12 @@ template <typename CompletionToken, typename Value> struct as_tuple_impl2 {
         : ct(std::forward<T>(t)) {}
 
     template <typename FinalFunctor>
-    constexpr decltype(auto) generate_token(io_context::task_t* task,
+    constexpr decltype(auto) generate_token(task_decl* task,
                                             FinalFunctor&& final_functor) {
         return as_tuple_impl3(
             std::forward<FinalFunctor>(final_functor),
             as_tuple_base_callable(detail::async_token_generate(
-                                       task, __CHXNET_FAKE_FINAL_FUNCTOR(), ct),
+                                       task, fake_final_functor(), ct),
                                    detail::type_identity<Value>()));
     }
 

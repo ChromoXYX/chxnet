@@ -8,6 +8,7 @@ so owner_guard and enable_weak_from_this is noncopyable
 #include <cassert>
 #include <cstddef>
 #include <cstdio>
+#include <utility>
 
 namespace chx::net::detail {
 struct counter_block {
@@ -192,5 +193,47 @@ template <typename Object> struct enable_weak_from_this {
 
   protected:
     void renew() { owner.renew(); }
+};
+
+struct anchor {
+    anchor(anchor&& other) noexcept(true)
+        : __M_other(std::exchange(other.__M_other, nullptr)) {
+        if (valid()) {
+            __M_other->__M_other = this;
+        }
+    }
+    constexpr ~anchor() noexcept(true) {
+        if (valid()) {
+            __M_other->__M_other = nullptr;
+            __M_other = nullptr;
+        }
+    }
+
+    constexpr anchor& operator=(anchor&& other) noexcept(true) {
+        if (this == &other) {
+            return *this;
+        }
+        if (valid()) {
+            __M_other->__M_other = nullptr;
+        }
+        __M_other = std::exchange(other.__M_other, nullptr);
+        if (valid()) {
+            __M_other->__M_other = this;
+        }
+        return *this;
+    }
+
+    constexpr bool valid() const noexcept(true) { return __M_other; }
+
+    static constexpr std::pair<anchor, anchor> create() noexcept(true) {
+        anchor a, b;
+        a.__M_other = &b;
+        b.__M_other = &a;
+        return {std::move(a), std::move(b)};
+    }
+
+  protected:
+    constexpr anchor() = default;
+    anchor* __M_other = nullptr;
 };
 }  // namespace chx::net::detail

@@ -4,10 +4,10 @@
 
 namespace net = chx::net;
 
-net::task task2(net::semaphore<int>& q);
+net::task<> task2(net::semaphore<int>& q);
 
 static net::cancellation_signal sig;
-net::task task(net::semaphore<int>& q) {
+net::task<> task(net::semaphore<int>& q) {
     std::cout << "#1 Wait for semaphore\n";
     std::cout << "#1 Spawn #2\n";
     co_spawn(co_await net::this_context, task2(q),
@@ -19,7 +19,7 @@ net::task task(net::semaphore<int>& q) {
     sig.emit();
 }
 
-net::task task2(net::semaphore<int>& q) {
+net::task<> task2(net::semaphore<int>& q) {
     std::cout << "#2 Wait for semaphore, but #1 would cancel it\n";
     auto [ec, ptr] = co_await q.async_acquire(
         bind_cancellation_signal(sig, net::as_tuple(net::use_coro)));

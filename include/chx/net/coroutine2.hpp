@@ -16,6 +16,7 @@
 #include "./async_combine.hpp"
 
 namespace chx::net {
+namespace detail {
 struct this_context_t {
     struct awaitable : std::suspend_never {
         io_context* ctx = nullptr;
@@ -23,17 +24,36 @@ struct this_context_t {
         constexpr io_context& await_resume() noexcept(true) { return *ctx; }
     };
 };
-inline constexpr struct this_context_t this_context = {};
+}  // namespace detail
+inline constexpr struct detail::this_context_t this_context = {};
+
+namespace detail {
+struct this_coro_t {
+    template <typename PromiseType> struct awaitable : std::suspend_never {
+        std::coroutine_handle<PromiseType> h;
+        constexpr awaitable(std::coroutine_handle<PromiseType> h_) noexcept(
+            true)
+            : h(h_) {}
+        constexpr std::coroutine_handle<PromiseType>
+        await_resume() noexcept(true) {
+            return h;
+        }
+    };
+};
+}  // namespace detail
+inline constexpr struct detail::this_coro_t this_coro = {};
 
 namespace detail::coroutine {
-class task_impl {
+struct empty_promise_data {};
+template <typename PromiseData> class task_impl {
     CHXNET_NONCOPYABLE
-    struct promise {
+    struct promise : PromiseData {
         ~promise() {
-            if (__M_then)
+            if (__M_then) {
                 __M_then(__M_then_data);
+            }
         }
-        // std::unique_ptr<coro_then_base> __M_then;
+
         void* __M_then_data = nullptr;
         void (*__M_then)(void*) = nullptr;
         io_context* __M_ctx = nullptr;
@@ -48,6 +68,11 @@ class task_impl {
         constexpr auto await_transform(this_context_t) noexcept(true) {
             return this_context_t::awaitable(__M_ctx);
         }
+        auto await_transform(this_coro_t) noexcept(true) {
+            return this_coro_t::awaitable{
+                std::coroutine_handle<promise>::from_promise(*this)};
+        }
+
         template <typename Awaitable>
         constexpr decltype(auto) await_transform(Awaitable&& awaitable) {
             return std::forward<Awaitable>(awaitable);
@@ -129,6 +154,18 @@ template <> struct nop_future_impl<void> {
     }
 };
 
+/*
+design:
+1. a future is associated to only one and the first one awaitable that a coro
+await on. the coro, the awaitable and the future will be a 3-tuple.
+2. once a coro awaits on one and any one awaitable of a future, that coro will
+suspend, and the future will resume.
+3. when the future suspend on final_suspend exactly, it will try to resume the
+coro in 3-tuple, if the awaitable not get destructed.
+4. the coro represented by the future will suspend on final_suspend, and will
+never resume. it is the programmer's responsibility to destroy this coro. still,
+future_impl<T> (aka future<T>) will destroy the coro in its destructor.
+*/
 template <typename T> struct future_impl {
     CHXNET_NONCOPYABLE
     ~future_impl() {
@@ -161,6 +198,11 @@ template <typename T> struct future_impl {
         constexpr auto await_transform(this_context_t) noexcept(true) {
             return this_context_t::awaitable(__M_ctx);
         }
+        constexpr auto await_transform(this_coro_t) noexcept(true) {
+            return this_coro_t::awaitable{
+                std::coroutine_handle<promise_type>::from_promise(
+                    static_cast<promise_type&>(*this))};
+        }
         template <typename Awaitable>
         constexpr decltype(auto)
         await_transform(Awaitable&& awaitable) noexcept(true) {
@@ -169,31 +211,33 @@ template <typename T> struct future_impl {
     };
 
     struct awaitable_base {
-        awaitable_base(future_impl* f) : pro(&f->h.promise()) {}
+        awaitable_base(future_impl* f) : self(&f->h.promise()) {}
         awaitable_base(awaitable_base&& other) noexcept(true)
-            : pro(std::exchange(other.pro, nullptr)) {
-            if (pro) {
-                pro->__M_awa = static_cast<awaitable*>(this);
+            : self(std::exchange(other.self, nullptr)) {
+            if (self && self->__M_awa == static_cast<awaitable*>(&other)) {
+                self->__M_awa = static_cast<awaitable*>(this);
             }
         }
         ~awaitable_base() { disconnect(); }
 
-        promise_type* pro;
+        promise_type* self;
 
         constexpr bool await_ready() noexcept(true) { return false; }
-        template <typename R> auto await_suspend(std::coroutine_handle<R> h) {
-            pro->__M_parent = h;
-            pro->__M_awa = static_cast<awaitable*>(this);
-            pro->__M_ctx = h.promise().__M_ctx;
-            return std::coroutine_handle<promise_type>::from_promise(*pro);
+        template <typename R>
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<R> parent) {
+            if (!self->__M_parent) {
+                self->__M_parent = parent;
+                self->__M_awa = static_cast<awaitable*>(this);
+                self->__M_ctx = parent.promise().__M_ctx;
+            }
+            return std::coroutine_handle<promise_type>::from_promise(*self);
         }
 
         void disconnect() noexcept(true) {
-            if (pro) {
-                pro->__M_awa = nullptr;
-                pro->__M_parent = {};
-                pro = nullptr;
+            if (self && self->__M_awa == this) {
+                self->__M_awa = nullptr;
             }
+            self = nullptr;
         }
     };
 
@@ -248,7 +292,7 @@ auto future_impl<T>::promise_base::final_suspend() noexcept(true) {
         constexpr bool await_ready() noexcept(true) { return false; }
         std::coroutine_handle<>
         await_suspend(std::coroutine_handle<promise_type> h) noexcept(true) {
-            if (h.promise().__M_parent) {
+            if (h.promise().__M_awa) {
                 return h.promise().__M_parent;
             } else {
                 return std::noop_coroutine();
@@ -261,7 +305,7 @@ auto future_impl<T>::promise_base::final_suspend() noexcept(true) {
 template <typename T>
 void future_impl<T>::promise_base::disconnect() noexcept(true) {
     if (__M_awa) {
-        __M_awa->pro = nullptr;
+        __M_awa->self = nullptr;
         __M_awa = nullptr;
         __M_parent = {};
     }
@@ -302,10 +346,31 @@ template <typename T> struct future_impl<T>::promise_type : promise_base {
     }
 };
 }  // namespace detail::coroutine
-using task = detail::coroutine::task_impl;
+template <typename PromiseData = detail::coroutine::empty_promise_data>
+using task = detail::coroutine::task_impl<PromiseData>;
 template <typename T = void> using future = detail::coroutine::future_impl<T>;
 template <typename T = void>
 using nop_future = detail::coroutine::nop_future_impl<T>;
+
+template <typename T = void> struct future_view : public future<T> {
+    constexpr ~future_view() noexcept(true) { this->h = {}; }
+
+    constexpr future_view() noexcept(true) : future<T>({}) {}
+    constexpr future_view(
+        std::coroutine_handle<typename future<T>::promise_type>
+            h_) noexcept(true)
+        : future<T>(h_) {}
+    constexpr future_view(const future_view& other) noexcept(true)
+        : future<T>(other.h) {}
+
+    constexpr future_view& operator=(const future_view& other) noexcept(true) {
+        if (this == &other) {
+            return *this;
+        }
+        this->h = other.h;
+        return *this;
+    }
+};
 
 namespace detail::coroutine {
 struct awaitable_then_base {

@@ -294,11 +294,6 @@ template <> struct async_operation<tags::async_write_seq> {
         for (auto& i : t) {
             arr_fill(i, v);
         }
-        if constexpr (is_iovec_vector<std::decay_t<T>>::value) {
-            if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
-                t.clear();
-            }
-        }
     }
 
     template <typename T> static auto fill_iov(T&& t) {

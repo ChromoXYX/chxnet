@@ -136,20 +136,50 @@ template <typename Container> class carrier {
     std::size_t __M_offset = 0, __M_len = 0;
 
   public:
-    using value_type = unsigned char;
-
     carrier(Container&& c, std::size_t offset, std::size_t len)
         : __M_c(std::move(c)), __M_offset(offset), __M_len(len) {}
     carrier(carrier&&) = default;
     carrier& operator=(carrier&&) = default;
 
     constexpr std::size_t size() const noexcept(true) { return __M_len; }
-    constexpr value_type* data() noexcept(true) {
-        return static_cast<unsigned char*>(buffer(__M_c).data()) + __M_offset;
-    }
-    constexpr const value_type* data() const noexcept(true) {
+    // constexpr void* data() noexcept(true) {
+    //     return static_cast<unsigned char*>(buffer(__M_c).data()) + __M_offset;
+    // }
+    constexpr const void* data() const noexcept(true) {
         return static_cast<const unsigned char*>(buffer(__M_c).data()) +
                __M_offset;
+    }
+
+    constexpr void remove_prefix(std::size_t n) noexcept(true) {
+        __M_offset += n;
+        __M_len -= n;
+    }
+    constexpr void remove_suffix(std::size_t n) noexcept(true) { __M_len -= n; }
+};
+
+template <typename Container> class offset_carrier {
+    Container __M_c;
+    std::size_t __M_offset = 0;
+
+  public:
+    offset_carrier(Container&& c, std::size_t offset)
+        : __M_c(std::move(c)), __M_offset(offset) {}
+    offset_carrier(offset_carrier&&) = default;
+    offset_carrier& operator=(offset_carrier&&) = default;
+
+    constexpr std::size_t size() const noexcept(true) {
+        return buffer(__M_c).size() - __M_offset;
+    }
+    // constexpr void* data() noexcept(true) {
+    //     return static_cast<unsigned char*>(buffer(__M_c).data()) + __M_offset;
+    // }
+    constexpr const void* data() const noexcept(true) {
+        return static_cast<const unsigned char*>(buffer(__M_c).data()) +
+               __M_offset;
+    }
+
+    constexpr void remove_prefix(std::size_t n) noexcept(true) {
+        __M_offset += n;
     }
 };
 
