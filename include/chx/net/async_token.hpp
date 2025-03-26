@@ -39,9 +39,6 @@ async_token_generate(task_decl* task, FinalFunctor&& final_functor,
         return token.generate_token(task,
                                     std::forward<FinalFunctor>(final_functor));
     } else {
-        // what if final_functor is fake_final_functor? here, completion_token
-        // will be move into lambda, so there is no need to worry about the
-        // lifetime for the completion_token.
         return
             [final_functor = std::move(final_functor),
              token = std::move(token)](task_decl* t) mutable -> decltype(auto) {

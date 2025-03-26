@@ -20,7 +20,6 @@ struct chx::net::detail::async_operation<::chx::net::detail::tags::cancel_fd> {
         io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_ALL);
         io_uring_sqe_set_data(sqe, nullptr);
         sqe->flags |= IOSQE_CQE_SKIP_SUCCESS;
-        ctx->submit();
     }
 };
 
@@ -70,14 +69,18 @@ class stream_base {
     }
 
     constexpr int native_handler() const noexcept(true) { return __M_fd; }
+    void native_handler(int new_fd) noexcept(true) {
+        if (is_open()) {
+            std::error_code e;
+            close(e);
+        }
+        __M_fd = new_fd;
+    }
     constexpr io_context& get_associated_io_context() const noexcept(true) {
         return const_cast<io_context&>(*__M_ctx);
     }
 
-    bool is_open() const noexcept(true) {
-        return native_handler() > 0 &&
-               (::fcntl(native_handler(), F_GETFD) || errno != EBADF);
-    }
+    bool is_open() const noexcept(true) { return native_handler() > 0; }
 
     void set_option(int level, int name, bool value,
                     std::error_code& ec) noexcept(true) {

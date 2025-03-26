@@ -6,13 +6,10 @@
 #include <type_traits>
 #include <utility>
 
+#include "./detail/is_container.hpp"
+
 namespace chx::net {
 namespace detail {
-struct has_data_and_size_impl {
-    template <typename T, typename = decltype(std::declval<T>().data()),
-              typename = decltype(std::declval<T>().size())>
-    has_data_and_size_impl(T) {}
-};
 struct has_data_impl {
     template <typename T, typename = decltype(std::declval<T>().data())>
     has_data_impl(T) {}
@@ -64,9 +61,7 @@ class mutable_buffer {
 
     template <
         typename Container,
-        typename = std::enable_if_t<
-            std::is_constructible_v<detail::has_data_and_size_impl, Container>>,
-        // typename = std::enable_if_t<!std::is_const<Container>::value>,
+        typename = std::enable_if_t<detail::is_container<Container>::value>,
         typename = std::enable_if_t<!detail::is_const_data<Container>::value>>
     explicit mutable_buffer(Container& b) noexcept(true)
         : __M_data(b.data()),
@@ -76,7 +71,6 @@ class mutable_buffer {
         typename Container,
         typename = std::enable_if_t<
             std::is_constructible_v<detail::has_data_impl, Container>>,
-        // typename = std::enable_if_t<!std::is_const<Container>::value>,
         typename = std::enable_if_t<!detail::is_const_data<Container>::value>>
     explicit mutable_buffer(Container& b, std::size_t size) noexcept(true)
         : __M_data(b.data()), __M_sz(size) {}
@@ -116,9 +110,8 @@ class const_buffer {
     explicit constexpr const_buffer(const struct iovec& io) noexcept(true)
         : __M_data(io.iov_base), __M_sz(io.iov_len) {}
 
-    template <typename Container,
-              typename = std::enable_if_t<std::is_constructible_v<
-                  detail::has_data_and_size_impl, Container>>>
+    template <typename Container, typename = std::enable_if_t<
+                                      detail::is_container<Container>::value>>
     explicit const_buffer(const Container& b) noexcept(true)
         : __M_data(b.data()),
           __M_sz(b.size() *

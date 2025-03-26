@@ -1,7 +1,9 @@
 #pragma once
 
-#include "./async_token.hpp"
+#include "./detail/tracker.hpp"
 #include "./async_combine.hpp"
+
+#include "./detail/task_carrier.hpp"
 
 namespace chx::net {
 namespace detail {
@@ -58,8 +60,9 @@ struct cancellation_signal {
 
   protected:
     detail::weak_ptr<io_context::task_t> __M_tracker;
-    void assign(io_context::task_t* t) noexcept(true) {
-        __M_tracker = t->weak_from_this();
+    void assign(io_context::task_t* t,
+                const detail::owner_guard& owner) noexcept(true) {
+        __M_tracker = {t, owner};
     }
 };
 
@@ -71,58 +74,11 @@ template <> struct async_operation<tags::cancellation_get_task> {
     }
 };
 template <> struct async_operation<tags::cancellation_assign> {
-    void operator()(cancellation_signal& sig, io_context::task_t* t) const
-        noexcept(true) {
-        sig.assign(t);
+    void operator()(cancellation_signal& sig, io_context::task_t* t,
+                    const detail::owner_guard& owner) const noexcept(true) {
+        sig.assign(t, owner);
     }
 };
-
-struct cancellation_attr {};
-template <typename BindCompletionToken> struct cancellation_ops {
-    using attribute_type = attribute<async_token, cancellation_attr>;
-
-    BindCompletionToken bind_completion_token;
-    cancellation_signal& signal;
-
-    template <typename BCT>
-    constexpr cancellation_ops(cancellation_signal& s, BCT&& bct) noexcept(true)
-        : signal(s), bind_completion_token(std::forward<BCT>(bct)) {}
-
-    template <typename FinalFunctor>
-    decltype(auto) generate_token(io_context::task_t* task,
-                                  FinalFunctor&& final_functor) {
-        signal.assign(task);
-        return async_token_generate(task,
-                                    std::forward<FinalFunctor>(final_functor),
-                                    bind_completion_token);
-    }
-    template <typename T> decltype(auto) get_init(T t) {
-        return async_token_init(t, bind_completion_token);
-    }
-};
-template <typename BindCompletionToken>
-cancellation_ops(cancellation_signal&, BindCompletionToken&&)
-    -> cancellation_ops<std::remove_reference_t<BindCompletionToken>>;
-
-template <typename NoRefCompletionToken> struct cancellation_inter {
-    using attribute_type = attribute<async_token, cancellation_attr>;
-
-    NoRefCompletionToken noref_completion_token;
-    cancellation_signal& signal;
-
-    template <typename RCT>
-    constexpr cancellation_inter(cancellation_signal& s,
-                                 RCT&& rct) noexcept(true)
-        : signal(s), noref_completion_token(std::forward<RCT>(rct)) {}
-
-    template <typename... S> decltype(auto) bind() {
-        return cancellation_ops(
-            signal, async_token_bind<S...>(std::move(noref_completion_token)));
-    }
-};
-template <typename RefCompletionToken>
-cancellation_inter(cancellation_signal&, RefCompletionToken&&)
-    -> cancellation_inter<std::remove_reference_t<RefCompletionToken>>;
 
 template <typename Operation, typename CompletionToken,
           typename EnableReferenceCount>
@@ -139,7 +95,13 @@ int async_combine_impl<Operation, CompletionToken,
 template <typename CompletionToken>
 decltype(auto) bind_cancellation_signal(cancellation_signal& signal,
                                         CompletionToken&& completion_token) {
-    return detail::cancellation_inter(
-        signal, std::forward<CompletionToken>(completion_token));
+    return detail::task_carrier_s1(
+        std::forward<CompletionToken>(completion_token), detail::owner_guard{},
+        [&signal](task_decl* task, auto ti, auto c) {
+            detail::owner_guard* g =
+                &c(ti.cast(task->get_underlying_data()))->data;
+            detail::async_operation<detail::tags::cancellation_assign>()(
+                signal, task, *g);
+        });
 }
 }  // namespace chx::net

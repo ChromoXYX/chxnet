@@ -14,14 +14,13 @@ template <> struct async_operation<tags::file_openat2> {
                               CompletionToken&& completion_token) {
         auto [sqe, task] = ctx->get();
         io_uring_prep_openat2(sqe, dirfd, filename, const_cast<open_how*>(&h));
-        ctx->submit();
-        task->__M_additional = reinterpret_cast<std::size_t>(f);
+        task->__M_additional_val = reinterpret_cast<std::size_t>(f);
 
         return async_token_init(
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* self) mutable -> int {
-                    auto* f = reinterpret_cast<file*>(self->__M_additional);
+                    auto* f = reinterpret_cast<file*>(self->__M_additional_val);
                     int res = get_res(self);
                     auto ec = get_ec(self);
                     if (!ec) {

@@ -50,16 +50,16 @@ struct session {
 
     void do_send() {
         static const char* msg = "hello world";
-        sock.async_sendto(
-            net::buffer(msg, 11),
-            {net::ip::address_v4::from_string("127.0.0.1"), 40000},
-            [](const std::error_code& e, std::size_t sz) {
-                if (!e) {
-                    std::cout << "sendto successful\n";
-                } else {
-                    std::cerr << "failed to sendto: " << e.message() << "\n";
-                }
-            });
+        // sock.async_sendto(
+        //     net::buffer(msg, 11),
+        //     {net::ip::address_v4::from_string("127.0.0.1"), 40000},
+        //     [](const std::error_code& e, std::size_t sz) {
+        //         if (!e) {
+        //             std::cout << "sendto successful\n";
+        //         } else {
+        //             std::cerr << "failed to sendto: " << e.message() << "\n";
+        //         }
+        //     });
     }
 };
 

@@ -5,11 +5,11 @@
 
 namespace chx::net {
 struct iovec_buffer : iovec {
-    constexpr iovec_buffer() noexcept(true) {
+    iovec_buffer() noexcept(true) {
         iovec::iov_base = nullptr;
         iovec::iov_len = 0;
     }
-    constexpr iovec_buffer(const iovec_buffer&) = default;
+    iovec_buffer(const iovec_buffer&) = default;
     iovec_buffer(void* ptr, std::size_t len) noexcept(true) {
         iovec::iov_base = ptr;
         iovec::iov_len = len;
@@ -19,9 +19,9 @@ struct iovec_buffer : iovec {
 
     using value_type = unsigned char;
 
-    constexpr value_type* data() noexcept(true) {
+    value_type* data() noexcept(true) {
         return static_cast<value_type*>(iovec::iov_base);
     }
-    constexpr std::size_t size() const noexcept(true) { return iovec::iov_len; }
+    std::size_t size() const noexcept(true) { return iovec::iov_len; }
 };
 }  // namespace chx::net

@@ -6,19 +6,6 @@
 #include "./general_io.hpp"
 #include "./general_ip_io.hpp"
 
-namespace chx::net::ip::detail::tags {
-struct udp_sendto {};
-}  // namespace chx::net::ip::detail::tags
-
-template <>
-struct chx::net::detail::async_operation<
-    chx::net::ip::detail::tags::udp_sendto> {
-    template <typename CompletionToken>
-    decltype(auto) operator()(io_context*, ip::udp::socket*,
-                              const const_buffer&, const ip::udp::endpoint&,
-                              CompletionToken&&);
-};
-
 namespace chx::net::ip {
 class udp::socket : public stream_base {
   public:
@@ -281,19 +268,6 @@ class udp::socket : public stream_base {
                 std::forward<CompletionToken>(completion_token)));
     }
 
-    template <typename ConstBuffer, typename CompletionToken>
-    decltype(auto) async_sendto(
-        ConstBuffer&& buffer, const endpoint& ep,
-        CompletionToken&& completion_token,
-        net::detail::sfinae_placeholder<
-            std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
-            _ = net::detail::sfinae) {
-        return net::detail::async_operation<detail::tags::udp_sendto>()(
-            &get_associated_io_context(), this,
-            std::forward<ConstBuffer>(buffer), ep,
-            std::forward<CompletionToken>(completion_token));
-    }
-
     template <typename ConstBuffer>
     std::size_t sendto(
         ConstBuffer&& const_buffer, const endpoint& ep, std::error_code& ec,
@@ -338,44 +312,3 @@ class udp::socket : public stream_base {
     }
 };
 }  // namespace chx::net::ip
-
-template <typename CompletionToken>
-decltype(auto)
-chx::net::detail::async_operation<chx::net::ip::detail::tags::udp_sendto>::
-operator()(io_context* ctx, ip::udp::socket* sock, const const_buffer& buffer,
-           const ip::udp::endpoint& ep, CompletionToken&& completion_token) {
-    io_context::task_t* task = ctx->acquire();
-    auto* sqe = ctx->get_sqe(task);
-
-    struct msghdr msg = {};
-    struct iovec io = {};
-    io.iov_base = const_cast<void*>(buffer.data());
-    io.iov_len = buffer.size();
-    msg.msg_iov = &io;
-    msg.msg_iovlen = 1;
-    if (ep.address().is_v4()) {
-        auto addr = ep.sockaddr_in();
-        msg.msg_name = &addr;
-        msg.msg_namelen = sizeof(addr);
-        io_uring_prep_sendmsg(sqe, sock->native_handler(), &msg, 0);
-        ctx->submit();
-    } else {
-        auto addr = ep.sockaddr_in6();
-        msg.msg_name = &addr;
-        msg.msg_namelen = sizeof(addr);
-        io_uring_prep_sendmsg(sqe, sock->native_handler(), &msg, 0);
-        ctx->submit();
-    }
-
-    return detail::async_token_init(
-        task->__M_token.emplace(detail::async_token_generate(
-            task,
-            [](auto& completion_token,
-               io_context::task_t* self) mutable -> int {
-                completion_token(get_ec(self),
-                                 static_cast<std::size_t>(get_res(self)));
-                return 0;
-            },
-            std::forward<CompletionToken>(completion_token))),
-        std::forward<CompletionToken>(completion_token));
-}

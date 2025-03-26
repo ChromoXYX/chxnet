@@ -1,6 +1,7 @@
 #include <iostream>
 #include <chx/net.hpp>
 #include <chx/net/coroutine2.hpp>
+#include <chx/net/when_any.hpp>
 
 namespace net = chx::net;
 
@@ -13,18 +14,20 @@ net::task<> test() {
         net::ip::tcp::acceptor acceptor2(
             co_await net::this_context,
             net::ip::tcp::endpoint(net::ip::tcp::v4(), 10087));
-        auto a1 = acceptor1.async_accept(net::use_coro);
+        auto a1 = acceptor1.async_accept(net::as_tuple(net::use_coro));
         auto a2 = acceptor2.async_accept(net::as_tuple(net::use_coro));
         acceptor2.close();
-        auto [val, idx] = co_await net::when_any(a1, a2);
-        std::cout << val.index() << "\n";
+        auto v = co_await net::when_any(co_await net::this_coro, a1, a2);
+        std::cout << "Test, should return 1: " << v.index() << "\n";
+        acceptor1.cancel();
+        co_await a1;
     }
     auto& this_ctx = co_await net::this_context;
     {
-        auto [val, idx] =
-            co_await net::when_any(this_ctx.async_nop(net::use_coro),
-                                   this_ctx.async_nop(net::use_coro));
-        std::cout << val.index() << "\n";
+        auto v = co_await net::when_any(co_await net::this_coro,
+                                        this_ctx.async_nop(net::use_coro),
+                                        this_ctx.async_nop(net::use_coro));
+        std::cout << "Test, should return any: " << v.index() << "\n";
     }
     co_return;
 }
@@ -67,7 +70,9 @@ net::task<> chain1() {
 
 int main(void) {
     net::io_context ctx;
-    co_spawn(ctx, test(), net::detached);
-    co_spawn(ctx, chain1(), net::detached);
+    co_spawn(ctx, test(),
+             [&](const std::error_code&) { std::cout << "Test exit\n"; });
+    co_spawn(ctx, chain1(),
+             [&](const std::error_code&) { std::cout << "Chain exit\n"; });
     ctx.run();
 }

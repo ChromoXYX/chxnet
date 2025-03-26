@@ -14,6 +14,7 @@
 #include "./detail/noncopyable.hpp"
 #include "./detail/interrupter.hpp"
 #include "./detail/scope_exit.hpp"
+#include "./detail/task_decl_ring_buffer.hpp"
 #include "./error_code.hpp"
 #include "./exception.hpp"
 
@@ -42,21 +43,68 @@ class io_context {
      */
     using task_t = task_decl;
 
-  protected:
+  public:
     struct message_base {
         virtual ~message_base() = default;
-        virtual void operator()(io_context*) = 0;
+        virtual int operator()(io_context*) = 0;
     };
 
     io_uring __M_ring;
     bool __M_stopped = false;
     const std::size_t __M_ring_sz;
 
-    std::queue<std::unique_ptr<task_t>> __M_task_pool;
-    std::vector<std::unique_ptr<task_t>> __M_outstanding_task_list;
+    task_decl __M_outstanding_task_list;
+    std::size_t __M_outstanding_task_list_n = 0;
+    detail::task_decl_ring_buffer<256> __M_task_pool;
+
+    std::queue<io_uring_sqe> __M_sqe_backlog;
+    void flush_sqe_backlog() {
+        while (!__M_sqe_backlog.empty() &&
+               !io_uring_cq_has_overflow(&__M_ring)) {
+            io_uring_sqe* sqe = io_uring_get_sqe(&__M_ring);
+            if (!sqe) {
+                int r = io_uring_submit(&__M_ring);
+                if (r < 0) {
+                    if (r == -EBUSY) {
+                        return;
+                    } else {
+                        __CHXNET_THROW_EC(make_ec(-r));
+                    }
+                }
+                sqe = io_uring_get_sqe(&__M_ring);
+                if (!sqe) {
+                    return;
+                }
+            }
+            *sqe = __M_sqe_backlog.front();
+            __M_sqe_backlog.pop();
+        }
+    }
+
+    constexpr void task_list_insert(task_decl* task) noexcept(true) {
+        assert(!task->__M_next && !task->__M_prev);
+        if (__M_outstanding_task_list.__M_next) {
+            __M_outstanding_task_list.__M_next->__M_prev = task;
+        }
+        task->__M_next = __M_outstanding_task_list.__M_next;
+        task->__M_prev = &__M_outstanding_task_list;
+        __M_outstanding_task_list.__M_next = task;
+        ++__M_outstanding_task_list_n;
+    }
+    void task_list_erase(task_decl* task) {
+        --__M_outstanding_task_list_n;
+        if (task->__M_prev) {
+            task->__M_prev->__M_next = task->__M_next;
+        }
+        if (task->__M_next) {
+            task->__M_next->__M_prev = task->__M_prev;
+        }
+        task->__M_prev = task->__M_next = nullptr;
+        __M_task_pool.push(std::unique_ptr<task_decl>(task));
+    }
 
     alignas(64) std::mutex __M_msg_list_mutex;
-    alignas(64) std::atomic_bool __M_msg_list_empty = false;
+    alignas(64) std::atomic_bool __M_msg_list_empty = true;
     std::vector<std::unique_ptr<message_base>> __M_msg_list;
 
     static_assert(
@@ -67,23 +115,15 @@ class io_context {
     detail::interrupter __M_blocker;
     bool __M_blocked = false;
 
-  protected:
+    struct {
+    } __M_msg_interrupt_data;
+    static_assert(sizeof(__M_msg_interrupt_data));
+
+  public:
     task_t* acquire() {
         try {
-            task_t* r = nullptr;
-            if (!__M_task_pool.empty()) {
-                std::unique_ptr ptr = std::move(__M_task_pool.front());
-                __M_task_pool.pop();
-                r = __M_outstanding_task_list.emplace_back(std::move(ptr))
-                        .get();
-                // printf("from pool ");
-            } else {
-                // printf("new task\n");
-                r = __M_outstanding_task_list.emplace_back(new task_t(this))
-                        .get();
-            }
-            // printf("%p\n", r);
-            return r;
+            task_t* r = __M_task_pool.pop() ?: new task_t(this);
+            return task_list_insert(r), r;
         } catch (const std::exception&) {
             rethrow_with_fatal(std::make_exception_ptr(
                 __CHXNET_MAKE_EX_CSTR("failed to obtain a task_t")));
@@ -93,16 +133,8 @@ class io_context {
     void release(task_t* task) {
         try {
             assert(task);
-            auto loc =
-                std::find_if(__M_outstanding_task_list.begin(),
-                             __M_outstanding_task_list.end(),
-                             [&](const auto& p) { return p.get() == task; });
-            std::unique_ptr ptr = std::move(*loc);
-            __M_outstanding_task_list.erase(loc);
-            if (__M_task_pool.size() < 256) {
-                ptr->reset();
-                __M_task_pool.push(std::move(ptr));
-            }
+            task->reset();
+            task_list_erase(task);
         } catch (const std::exception&) {
             rethrow_with_fatal(std::current_exception());
         }
@@ -114,15 +146,21 @@ class io_context {
             io_uring_sqe_set_data(sqe, task);
             return sqe;
         } else {
-            submit();
-            sqe = io_uring_get_sqe(&__M_ring);
-            if (sqe) {
-                io_uring_sqe_set_data(sqe, task);
-                return sqe;
+            int r = io_uring_submit(&__M_ring);
+            if (r >= 0) {
+                sqe = io_uring_get_sqe(&__M_ring);
+                if (!sqe) {
+                    rethrow_with_fatal(std::make_exception_ptr(
+                        __CHXNET_MAKE_EX_CSTR("Cannot obtain io_uring_sqe*")));
+                }
+            } else if (r == -EBUSY) {
+                return &__M_sqe_backlog.emplace();
             } else {
-                rethrow_with_fatal(std::make_exception_ptr(
-                    __CHXNET_MAKE_EX_CSTR("Cannot obtain io_uring_sqe*")));
+                rethrow_with_fatal(
+                    std::make_exception_ptr(__CHXNET_MAKE_EX_CODE(-r)));
             }
+            io_uring_sqe_set_data(sqe, task);
+            return sqe;
         }
     }
 
@@ -151,7 +189,15 @@ class io_context {
     void __handle_task(io_uring_cqe* cqe) {
         task_t* task = static_cast<task_t*>(io_uring_cqe_get_data(cqe));
         task->__M_cqe = cqe;
-        if (task->__M_notif || task->__M_persist) {
+        if (!task->__M_notif && !task->__M_persist) {
+            try {
+                task->__M_token(task);
+            } catch (const std::exception&) {
+                release(task);
+                std::rethrow_exception(std::current_exception());
+            }
+            release(task);
+        } else {
             detail::scope_exit _(
                 [this,
                  more = task->__M_persist || (cqe->flags & IORING_CQE_F_MORE),
@@ -161,15 +207,6 @@ class io_context {
                     }
                 });
             task->__M_token(task);
-        } else {
-            assert(!(cqe->flags & IORING_CQE_F_MORE));
-            try {
-                task->__M_token(task);
-            } catch (const std::exception&) {
-                release(task);
-                std::rethrow_exception(std::current_exception());
-            }
-            release(task);
         }
     }
     void __handle_msg() {
@@ -181,31 +218,72 @@ class io_context {
                 __M_msg_list_empty.store(true, std::memory_order_relaxed);
             }
             std::size_t i = 0;
+            std::vector<std::unique_ptr<message_base>> next;
             try {
                 for (; i < v.size(); ++i) {
-                    (*v[i])(this);
-                    v[i].reset();
+                    if (!(*v[i])(this)) {
+                        v[i].reset();
+                    } else {
+                        try {
+                            next.emplace_back(std::move(v[i]));
+                        } catch (const std::exception&) {
+                            rethrow_with_fatal(std::current_exception());
+                        }
+                    }
+                }
+                try {
+                    if (!next.empty()) {
+                        {
+                            std::lock_guard lg(__M_msg_list_mutex);
+                            __M_msg_list.insert(
+                                __M_msg_list.end(),
+                                std::make_move_iterator(next.begin()),
+                                std::make_move_iterator(next.end()));
+                            next.clear();
+                            __M_msg_list_empty.store(false,
+                                                     std::memory_order_relaxed);
+                        }
+                        interrupt();
+                    }
+                } catch (const std::exception&) {
+                    rethrow_with_fatal(std::current_exception());
                 }
             } catch (const std::exception& ex) {
-                if (i + 1 < v.size()) {
-                    std::lock_guard lg(__M_msg_list_mutex);
-                    __M_msg_list.insert(
-                        __M_msg_list.end(),
-                        std::make_move_iterator(v.begin() + i + 1),
-                        std::make_move_iterator(v.end()));
-                    __M_msg_list_empty.store(false, std::memory_order_relaxed);
+                try {
+                    if (i + 1 < v.size()) {
+                        std::lock_guard lg(__M_msg_list_mutex);
+                        __M_msg_list.insert(
+                            __M_msg_list.end(),
+                            std::make_move_iterator(v.begin() + i + 1),
+                            std::make_move_iterator(v.end()));
+                        __M_msg_list_empty.store(false,
+                                                 std::memory_order_relaxed);
+                    }
+                    if (!next.empty()) {
+                        {
+                            std::lock_guard lg(__M_msg_list_mutex);
+                            __M_msg_list.insert(
+                                __M_msg_list.end(),
+                                std::make_move_iterator(next.begin()),
+                                std::make_move_iterator(next.end()));
+                            next.clear();
+                            __M_msg_list_empty.store(false,
+                                                     std::memory_order_relaxed);
+                        }
+                        interrupt();
+                    }
+                } catch (const std::exception&) {
+                    rethrow_with_fatal(std::current_exception());
                 }
+                std::rethrow_exception(std::current_exception());
             }
         }
     }
 
     void __run() {
         while (outstanding_tasks() || __M_blocked) {
-            if (int r = io_uring_submit_and_wait(&__M_ring, 1); r < 0) {
-                // rethrow_with_fatal(std::make_exception_ptr(
-                //     __CHXNET_MAKE_EX_CSTR("io_uring_submit_and_wait
-                //     failed")));
-                continue;
+            if (io_uring_submit_and_wait(&__M_ring, 1) >= 0) {
+                flush_sqe_backlog();
             }
 
             io_uring_cqe* cqe;
@@ -246,22 +324,20 @@ class io_context {
                 if (is_stopped()) {
                     return;
                 }
-                if (nr.nr > __M_ring_sz) {
-                    break;
-                }
             }
         }
-        __handle_msg();
     }
 
     void __async_cancel_all() {
-        for (auto& ptr : __M_outstanding_task_list) {
+        task_decl* node = __M_outstanding_task_list.__M_next;
+        while (node) {
             auto* sqe = get_sqe();
-            io_uring_prep_cancel(sqe, ptr.get(), IORING_ASYNC_CANCEL_ALL);
+            io_uring_prep_cancel(sqe, node, IORING_ASYNC_CANCEL_ALL);
+            node = node->__M_next;
         }
     }
 
-    void submit() {
+    [[deprecated]] void submit() {
         if (int r = io_uring_submit(&__M_ring); r >= 0) {
             return;
         } else {
@@ -273,8 +349,11 @@ class io_context {
   public:
     io_context(struct io_uring_params params = {},
                std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(task_t))
-        : __M_ring_sz(static_task_sz > 4096 ? static_task_sz : 4096) {
-        params.features |= IORING_FEAT_FAST_POLL | IORING_FEAT_CQE_SKIP;
+        : __M_ring_sz(static_task_sz > 4096 ? static_task_sz : 4096),
+          __M_outstanding_task_list(this) {
+        params.flags |= IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN;
+        params.features |=
+            IORING_FEAT_FAST_POLL | IORING_FEAT_CQE_SKIP | IORING_FEAT_NODROP;
         if (int r = io_uring_queue_init_params(__M_ring_sz, &__M_ring, &params);
             r != 0) {
             rethrow_with_fatal(std::make_exception_ptr(
@@ -287,7 +366,19 @@ class io_context {
      * @brief Destroy the io_context object.
      *
      */
-    ~io_context() { io_uring_queue_exit(&__M_ring); }
+    ~io_context() {
+        io_uring_queue_exit(&__M_ring);
+        task_decl* node = __M_outstanding_task_list.__M_next;
+        while (node) {
+            if (node->__M_prev) {
+                node->__M_prev->__M_next = node->__M_next;
+            }
+            if (node->__M_next) {
+                node->__M_next->__M_prev = node->__M_prev;
+            }
+            delete std::exchange(node, node->__M_next);
+        }
+    }
     /**
      * @brief Start waiting for async tasks to be completed.
      *
@@ -346,11 +437,22 @@ class io_context {
         struct impl : message_base, __decay_t {
             impl(Fn&& fn) : __decay_t(std::forward<Fn>(fn)) {}
 
-            void operator()(io_context* ctx) override {
-                if constexpr (std::is_invocable_v<Fn&&, io_context*>) {
-                    __decay_t::operator()(ctx);
+            int operator()(io_context* ctx) override {
+                if constexpr (std::is_invocable_v<__decay_t, io_context*>) {
+                    if constexpr (!std::is_same_v<std::invoke_result_t<
+                                                      __decay_t, io_context*>,
+                                                  void>) {
+                        return __decay_t::operator()(ctx);
+                    } else {
+                        return __decay_t::operator()(ctx), 0;
+                    }
                 } else {
-                    __decay_t::operator()();
+                    if constexpr (!std::is_same_v<
+                                      std::invoke_result_t<__decay_t>, void>) {
+                        return __decay_t::operator()();
+                    } else {
+                        return __decay_t::operator()(), 0;
+                    }
                 }
             }
         };
@@ -360,10 +462,10 @@ class io_context {
         __M_msg_list.emplace_back(std::move(msg));
         __M_msg_list_empty.store(false, std::memory_order_relaxed);
     }
-    void interrupt() const { __M_interrupter.do_interrupt(); }
+    void interrupt() const noexcept(true) { __M_interrupter.do_interrupt(); }
 
-    std::size_t outstanding_tasks() const noexcept(true) {
-        return __M_outstanding_task_list.size();
+    constexpr std::size_t outstanding_tasks() const noexcept(true) {
+        return __M_outstanding_task_list_n;
     }
     constexpr int native_handler() const noexcept(true) {
         return __M_ring.ring_fd;

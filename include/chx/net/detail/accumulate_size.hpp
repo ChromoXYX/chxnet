@@ -34,7 +34,7 @@ template <typename T> constexpr std::size_t accumulate_size(T&& t) {
         }
     } else if constexpr (is_tuple<std::decay_t<T>>::value) {
         return std::apply(
-            [](auto&&... ts) { return (... + accumulate_size(ts)); }, t);
+            [](auto&&... ts) { return (0 + ... + accumulate_size(ts)); }, t);
     } else if constexpr (is_variant<std::decay_t<T>>::value) {
         return std::visit(
             [](const auto& item) { return accumulate_size(item); }, t);

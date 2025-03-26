@@ -148,7 +148,7 @@ template <> struct async_operation<tags::fixed_timer2> {
                            std::make_unique<io_context::task_t>(timer->__M_ctx))
                        .get();
         }
-        task->__M_additional = reinterpret_cast<std::uint64_t>(timer);
+        task->__M_additional_val = reinterpret_cast<std::uint64_t>(timer);
         task->__M_custom_cancellation.reset(
             new async_operation<tags::fixed_timer_controller>::controller<
                 Clock>(timer, task, tp));
@@ -164,8 +164,8 @@ template <> struct async_operation<tags::fixed_timer2> {
                                              : make_ec(self->__M_res));
                     return 0;
                 },
-                std::forward<BindCompletionToken>(bind_completion_token))),
-            std::forward<BindCompletionToken>(bind_completion_token));
+                bind_completion_token)),
+            bind_completion_token);
     }
 
     template <typename Clock> void do_loop2(basic_fixed_timer<Clock>* tmr) {

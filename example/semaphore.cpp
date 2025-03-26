@@ -4,10 +4,10 @@
 
 namespace net = chx::net;
 
-net::task<> task2(net::semaphore<int>& q);
+net::task<> task2(net::semaphore& q);
 
 static net::cancellation_signal sig;
-net::task<> task(net::semaphore<int>& q) {
+net::task<> task(net::semaphore& q) {
     std::cout << "#1 Wait for semaphore\n";
     std::cout << "#1 Spawn #2\n";
     co_spawn(co_await net::this_context, task2(q),
@@ -19,26 +19,24 @@ net::task<> task(net::semaphore<int>& q) {
     sig.emit();
 }
 
-net::task<> task2(net::semaphore<int>& q) {
+net::task<> task2(net::semaphore& q) {
     std::cout << "#2 Wait for semaphore, but #1 would cancel it\n";
-    auto [ec, ptr] = co_await q.async_acquire(
+    auto [ec] = co_await q.async_acquire(
         bind_cancellation_signal(sig, net::as_tuple(net::use_coro)));
-    std::cout << "#2 ec: " << ec.message()
-              << " and does it has value?: " << std::boolalpha
-              << ptr.has_value() << "\n";
+    std::cout << "#2 ec: " << ec.message() << "\n";
 }
 
 int main() {
     net::io_context ctx;
     net::fixed_timer timer(ctx);
-    net::semaphore<int> queue(ctx);
+    net::semaphore queue(ctx);
     co_spawn(ctx, task(queue), [](const std::error_code& e) {
         std::cout << "#1 Coroutine finished\n";
     });
     timer.async_register(std::chrono::seconds(1),
                          [&](const std::error_code& e) {
                              std::cout << "Timeout\n";
-                             queue.release(42);
+                             queue.release();
                              std::cout << "Semaphore pop\n";
                          });
     ctx.run();

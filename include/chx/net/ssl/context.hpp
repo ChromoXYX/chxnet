@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../exception.hpp"
-#include "../error_code.hpp"
 #include "../detail/noncopyable.hpp"
+
+#include "./error_code.hpp"
 
 #include <cstdint>
 #include <cassert>
@@ -11,19 +11,6 @@
 #include <openssl/ssl.h>
 
 namespace chx::net::ssl {
-class bad_context : public net::exception {
-  public:
-    using exception::exception;
-};
-
-namespace detail {
-inline std::string last_error() {
-    char buf[128] = {};
-    ERR_error_string_n(ERR_get_error(), buf, sizeof(buf));
-    return {buf};
-}
-}  // namespace detail
-
 class context {
     CHXNET_NONCOPYABLE
 
@@ -106,12 +93,12 @@ class context {
             break;
         }
         default: {
-            __CHXNET_THROW_WITH(EINVAL, bad_context);
+            __CHXNET_THROW_WITH(EINVAL, openssl_exception);
         }
         }
 
         if (__M_ssl_ctx == nullptr) {
-            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), openssl_exception);
         }
     }
 
@@ -124,7 +111,7 @@ class context {
                                              ft == pem ? SSL_FILETYPE_PEM
                                                        : SSL_FILETYPE_ASN1);
         if (r != 1) {
-            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), openssl_exception);
         }
     }
     void use_PrivateKey_file(const char* cstr, filetype ft) {
@@ -133,14 +120,14 @@ class context {
                                             ft == pem ? SSL_FILETYPE_PEM
                                                       : SSL_FILETYPE_ASN1);
         if (r != 1) {
-            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), openssl_exception);
         }
     }
     void use_certificate_chain_file(const char* cstr) {
         ERR_clear_error();
         int r = SSL_CTX_use_certificate_chain_file(native_handler(), cstr);
         if (r != 1) {
-            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), openssl_exception);
         }
     }
 
@@ -176,13 +163,13 @@ class context {
     void set_min_proto_version(protocol_version v) {
         ERR_clear_error();
         if (SSL_CTX_set_min_proto_version(native_handler(), v) == 0) {
-            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), openssl_exception);
         }
     }
     void set_max_proto_version(protocol_version v) {
         ERR_clear_error();
         if (SSL_CTX_set_max_proto_version(native_handler(), v) == 0) {
-            __CHXNET_THROW_STR_WITH(detail::last_error(), bad_context);
+            __CHXNET_THROW_STR_WITH(detail::last_error(), openssl_exception);
         }
     }
 

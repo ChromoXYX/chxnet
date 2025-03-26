@@ -232,7 +232,7 @@ class address {
     }
 
     static address from_string(const char* addr,
-                                std::error_code& ec) noexcept(true) {
+                               std::error_code& ec) noexcept(true) {
         ec.clear();
         address_v4 v4 = address_v4::from_string(addr, ec);
         if (!ec) {
@@ -246,7 +246,7 @@ class address {
         return {};
     }
     static address from_string(const std::string& addr,
-                                std::error_code& ec) noexcept(true) {
+                               std::error_code& ec) noexcept(true) {
         return from_string(addr.c_str(), ec);
     }
 
@@ -269,12 +269,12 @@ class address {
         }
     }
 
-    static address from_sockaddr(struct sockaddr* addr) noexcept(true) {
+    static address from_sockaddr(const struct sockaddr* addr) noexcept(true) {
         if (addr->sa_family == AF_INET6) {
-            auto* addr6 = reinterpret_cast<struct sockaddr_in6*>(addr);
+            auto* addr6 = reinterpret_cast<const struct sockaddr_in6*>(addr);
             return address_v6(addr6->sin6_addr);
         } else {
-            auto* addr4 = reinterpret_cast<struct sockaddr_in*>(addr);
+            auto* addr4 = reinterpret_cast<const struct sockaddr_in*>(addr);
             return address_v4(ntohl(addr4->sin_addr.s_addr));
         }
     }
@@ -332,12 +332,14 @@ template <typename Protocol> struct basic_endpoint {
         return addr;
     }
 
-    static basic_endpoint make_endpoint(struct sockaddr* addr) noexcept(true) {
+    static basic_endpoint
+    make_endpoint(const struct sockaddr* addr) noexcept(true) {
         unsigned short port = 0;
         if (addr->sa_family == AF_INET6) {
-            port = reinterpret_cast<struct sockaddr_in6*>(addr)->sin6_port;
+            port =
+                reinterpret_cast<const struct sockaddr_in6*>(addr)->sin6_port;
         } else {
-            port = reinterpret_cast<struct sockaddr_in*>(addr)->sin_port;
+            port = reinterpret_cast<const struct sockaddr_in*>(addr)->sin_port;
         }
         return basic_endpoint(address::from_sockaddr(addr), port);
     }

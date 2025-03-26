@@ -10,8 +10,8 @@ namespace chx::net::detail {
 struct interrupter {
     eventfd_t __M_efd = -1;
 
-    interrupter() {
-        __M_efd = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
+    interrupter(unsigned int init = 0) {
+        __M_efd = eventfd(init, EFD_SEMAPHORE | EFD_NONBLOCK);
         if (__M_efd == -1) {
             rethrow_with_fatal(
                 std::make_exception_ptr(__CHXNET_MAKE_EX_CODE(errno)));
@@ -30,14 +30,8 @@ struct interrupter {
         io_uring_prep_read(sqe, __M_efd, &__M_inbuf, 8, 0);
         io_uring_sqe_set_data(sqe, user_data);
     }
-    void do_interrupt() const {
-        int r = eventfd_write(__M_efd, 1);
-        if (r == 0 || errno == EWOULDBLOCK) {
-            return;
-        } else {
-            rethrow_with_fatal(
-                std::make_exception_ptr(__CHXNET_MAKE_EX_CODE(errno)));
-        }
+    void do_interrupt(unsigned long c = 1) const noexcept(true) {
+        eventfd_write(__M_efd, c);
     }
 };
 }  // namespace chx::net::detail

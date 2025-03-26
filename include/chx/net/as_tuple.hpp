@@ -34,13 +34,14 @@ as_tuple_impl(T, detail::type_identity<V>)
     -> as_tuple_impl<std::remove_reference_t<T>, V>;
 
 template <typename FinalFunctor, typename CallableObj>
-struct as_tuple_impl3 : FinalFunctor, CallableObj {
+struct as_tuple_impl3 : CallableObj {
+    FinalFunctor final_functor;
     template <typename F, typename C>
     as_tuple_impl3(F&& f, C&& c)
-        : FinalFunctor(std::forward<F>(f)), CallableObj(std::forward<C>(c)) {}
+        : CallableObj(std::forward<C>(c)), final_functor(std::forward<F>(f)) {}
 
     decltype(auto) operator()(task_decl* self) {
-        return FinalFunctor::operator()(static_cast<CallableObj&>(*this), self);
+        return final_functor(static_cast<CallableObj&>(*this), self);
     }
 };
 template <typename F, typename C>
@@ -76,9 +77,9 @@ template <typename CompletionToken, typename Value> struct as_tuple_impl2 {
                                             FinalFunctor&& final_functor) {
         return as_tuple_impl3(
             std::forward<FinalFunctor>(final_functor),
-            as_tuple_base_callable(detail::async_token_generate(
-                                       task, fake_final_functor(), ct),
-                                   detail::type_identity<Value>()));
+            as_tuple_base_callable(
+                detail::async_token_generate(task, fake_final_functor(), ct),
+                detail::type_identity<Value>()));
     }
 
     template <typename TypeIdentity> decltype(auto) get_init(TypeIdentity ti) {

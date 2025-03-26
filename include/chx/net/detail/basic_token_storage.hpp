@@ -5,11 +5,14 @@
 #include <cstring>
 #include <utility>
 
+#include "./integral_constant.hpp"
+#include "./type_identity.hpp"
+#include "./get_offset_of.hpp"
 #include "../exception.hpp"
 #include "./noncopyable.hpp"
 
 #ifndef CHXNET_TOKEN_STORAGE_SHRINK_FACTOR
-#define CHXNET_TOKEN_STORAGE_SHRINK_FACTOR 2
+#define CHXNET_TOKEN_STORAGE_SHRINK_FACTOR 4
 #endif
 
 namespace chx::net {
@@ -37,21 +40,18 @@ template <typename Ret, typename... Args> struct func_traits<Ret(Args...)> {
     using args_type = std::tuple<Args...>;
 };
 
-template <typename Signature, std::size_t BufferSize, std::size_t Align>
-class basic_token_storage {
+template <typename Signature, std::size_t BufferSize>
+struct basic_token_storage {
     CHXNET_NONCOPYABLE
-  public:
     using signature_type = Signature;
 
-    static constexpr std::size_t align = Align;
-    static constexpr std::size_t buffer_size = std::max(BufferSize, Align);
+    static constexpr std::size_t buffer_size = BufferSize;
 
-  private:
     using __ret_type = typename func_traits<signature_type>::return_type;
     using __args_type = typename func_traits<signature_type>::args_type;
 
     union {
-        alignas(align) unsigned char __M_internal_buf[buffer_size] = {};
+        unsigned char __M_internal_buf[buffer_size] = {};
         std::size_t __M_last_sz;
     };
 
@@ -62,7 +62,6 @@ class basic_token_storage {
         virtual ~__base_impl() noexcept(true) = default;
 
         virtual __ret_type invoke(_Ts... _ts) = 0;
-        virtual void* underlying_data() noexcept(true) = 0;
         virtual void destruct(basic_token_storage& self) = 0;
     };
     template <typename, typename> struct __wrapper_impl;
@@ -71,17 +70,19 @@ class basic_token_storage {
         : __base_impl<std::tuple<_Ts...>> {
         static_assert(std::is_nothrow_destructible<_R>::value);
 
-        _R _M_r;
+        union {
+            _R _M_r;
+            char _c;
+        };
 
         template <typename... _Args>
-        __wrapper_impl(_Args&&... _args)
-            : _M_r(std::forward<_Args>(_args)...) {}
+        __wrapper_impl(_Args&&... _args) : _M_r(std::forward<_Args>(_args)...) {
+            static_assert(get_offset_of<&__wrapper_impl::_c>::value == 8);
+        }
+        ~__wrapper_impl() override { _M_r.~_R(); }
 
         virtual __ret_type invoke(_Ts... _ts) override {
             return _M_r(std::forward<_Ts>(_ts)...);
-        }
-        virtual void* underlying_data() noexcept(true) override {
-            return &_M_r;
         }
         virtual void destruct(basic_token_storage& self) override {
             self.template emplace<__empty_fn_placeholder<sizeof(_R)>>(inplace);
@@ -93,10 +94,6 @@ class basic_token_storage {
         unsigned char __b[_N];
 
         virtual __ret_type invoke(_Ts... _ts) override { return {}; }
-        virtual void* underlying_data() noexcept(true) override {
-            assert(false);
-            return nullptr;
-        }
         virtual void destruct(basic_token_storage& self) override {
             self.template emplace<__empty_fn_placeholder<_N>>(inplace);
         }
@@ -123,7 +120,6 @@ class basic_token_storage {
         }
     }
 
-  public:
     basic_token_storage() = default;
     basic_token_storage(basic_token_storage&& other) = delete;
 
@@ -133,7 +129,7 @@ class basic_token_storage {
     basic_token_storage(CallableObj&& callable_obj) {
         using __internal_obj_type = std::remove_reference_t<CallableObj>;
         using __w = __wrapper<__internal_obj_type>;
-        if constexpr (sizeof(__w) <= buffer_size && alignof(__w) <= align) {
+        if constexpr (sizeof(__w) <= buffer_size) {
             __M_ptr = new (__M_internal_buf)
                 __w(std::forward<CallableObj>(callable_obj));
         } else {
@@ -144,7 +140,10 @@ class basic_token_storage {
         }
     }
 
-    ~basic_token_storage() noexcept(true) { __destroy_and_release(); }
+    ~basic_token_storage() noexcept(true) {
+        static_assert(offsetof(basic_token_storage, __M_internal_buf) == 0);
+        __destroy_and_release();
+    }
 
     template <typename T>
     constexpr auto emplace(fake_emplace<T>) noexcept(true) {
@@ -160,8 +159,7 @@ class basic_token_storage {
             std::conditional_t<std::is_function_v<__no_ref>,
                                std::add_pointer_t<__no_ref>, __no_ref>;
         using __w = __wrapper<__internal_obj_type>;
-
-        if constexpr (sizeof(__w) <= buffer_size && alignof(__w) <= align) {
+        if constexpr (sizeof(__w) <= buffer_size) {
             __destroy_and_release();
             __M_ptr = new (__M_internal_buf)
                 __w(std::forward<CallableObj>(callable_obj));
@@ -189,11 +187,8 @@ class basic_token_storage {
             ::new (__M_ptr) __w(std::forward<CallableObj>(callable_obj));
         }
 
-        struct __ret_t
-            : std::integral_constant<bool, (sizeof(__w) <= buffer_size &&
-                                            alignof(__w) <= align)> {
-            using type = __internal_obj_type;
-        };
+        struct __ret_t : type_identity<__internal_obj_type>,
+                         integral_constant<bool, sizeof(__w) <= buffer_size> {};
         return __ret_t{};
     }
 
@@ -205,7 +200,7 @@ class basic_token_storage {
                                std::add_pointer_t<__no_ref>, __no_ref>;
         using __w = __wrapper<__internal_obj_type>;
 
-        if constexpr (sizeof(__w) <= buffer_size && alignof(__w) <= align) {
+        if constexpr (sizeof(__w) <= buffer_size) {
             __destroy_and_release();
             __M_ptr = new (__M_internal_buf) __w(std::forward<Args>(args)...);
         } else {
@@ -232,11 +227,8 @@ class basic_token_storage {
             ::new (__M_ptr) __w(std::forward<Args>(args)...);
         }
 
-        struct __ret_t
-            : std::integral_constant<bool, (sizeof(__w) <= buffer_size &&
-                                            alignof(__w) <= align)> {
-            using type = __internal_obj_type;
-        };
+        struct __ret_t : type_identity<__internal_obj_type>,
+                         integral_constant<bool, sizeof(__w) <= buffer_size> {};
         return __ret_t{};
     }
 
@@ -244,9 +236,7 @@ class basic_token_storage {
     constexpr operator bool() const noexcept { return valid(); }
 
     void clear() noexcept(true) { __destroy_and_release(); }
-    void* underlying_data() const noexcept(true) {
-        return __M_ptr->underlying_data();
-    }
+    void* underlying_data() const noexcept(true) { return (char*)__M_ptr + 8; }
     void destruct() { __M_ptr->destruct(*this); }
 
     template <typename... Args> decltype(auto) operator()(Args&&... args) {

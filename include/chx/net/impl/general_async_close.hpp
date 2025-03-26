@@ -14,13 +14,13 @@ template <> struct async_operation<tags::async_close> {
                               CompletionToken&& completion_token) {
         auto [sqe, task] = ctx->get();
         io_uring_prep_close(sqe, stream->native_handler());
-        task->__M_additional = reinterpret_cast<std::uint64_t>(stream);
+        task->__M_additional_val = reinterpret_cast<std::uint64_t>(stream);
         return async_token_init(
             task->__M_token.emplace(async_token_generate(
                 task,
                 [](auto& token, io_context::task_t* self) -> int {
                     Stream* stream =
-                        reinterpret_cast<Stream*>(self->__M_additional);
+                        reinterpret_cast<Stream*>(self->__M_additional_val);
                     auto ec = get_ec(self);
                     if (ec != errc::operation_canceled) {
                         stream->__M_fd = -1;

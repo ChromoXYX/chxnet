@@ -3,6 +3,7 @@
 #include "../async_write_sequence_exactly.hpp"
 #include "../async_write_sequence.hpp"
 #include "../detail/type_identity.hpp"
+#include "../detail/span.hpp"
 
 namespace chx::net::detail {
 namespace tags {
@@ -23,14 +24,12 @@ template <> struct async_operation<tags::write_seq_exactly> {
     struct exactly_seq_managed {
         CHXNET_NONCOPYABLE
         template <typename CntlType> using rebind = exactly_seq_managed;
-        using __toolkit = async_operation<tags::async_write_seq>;
+        using __toolkit = flatten_sequence_impl;
 
         template <typename STRM, typename RS>
         exactly_seq_managed(STRM&& strm, RS&& rs)
             : stream(std::forward<STRM>(strm)), real_seq(std::forward<RS>(rs)),
-              flat_sequence(__toolkit::iov_static_size(real_seq)) {
-            struct iovec* ptr = flat_sequence.data();
-            __toolkit::arr_fill(real_seq, ptr);
+              flat_sequence(flatten_sequence(real_seq)) {
             for (const iovec& i : flat_sequence) {
                 total_size += i.iov_len;
             }
@@ -39,10 +38,10 @@ template <> struct async_operation<tags::write_seq_exactly> {
         Stream stream;
         RealSequence real_seq;
 
-        using flat_sequence_type = std::vector<struct iovec>;
-        flat_sequence_type flat_sequence;
+        flatten_sequence_type<RealSequence> flat_sequence;
         std::size_t transferred = 0;
         std::size_t total_size = 0;
+        std::size_t iovec_index = 0;
 
         template <typename Cntl> void operator()(Cntl& cntl) {
             async_write_seq3(stream, flat_sequence, cntl.next());
@@ -52,14 +51,16 @@ template <> struct async_operation<tags::write_seq_exactly> {
             if (!e && s) {
                 if (transferred + s < total_size) {
                     transferred += s;
-                    while (s >= flat_sequence.front().iov_len) {
-                        s -= flat_sequence.front().iov_len;
-                        flat_sequence.erase(flat_sequence.begin());
+                    while (iovec_index < flat_sequence.size() &&
+                           s >= flat_sequence[iovec_index].iov_len) {
+                        s -= flat_sequence[iovec_index++].iov_len;
                     }
-                    assert(!flat_sequence.empty() &&
-                           flat_sequence.front().iov_len > s);
-                    flat_sequence.front().iov_len -= s;
-                    async_write_seq3(stream, flat_sequence, cntl.next());
+                    assert(iovec_index < flat_sequence.size() &&
+                           flat_sequence[iovec_index].iov_len > s);
+                    flat_sequence[iovec_index].iov_len -= s;
+                    span sp(flat_sequence.data() + iovec_index,
+                            flat_sequence.size() - iovec_index);
+                    async_write_seq3(stream, sp, cntl.next());
                 } else {
                     cntl.complete(e, total_size);
                 }

@@ -91,9 +91,6 @@ template <typename PromiseData> class task_impl {
         constexpr void set_io_context(io_context* ctx) noexcept(true) {
             __M_ctx = ctx;
         }
-        constexpr io_context& get_associated_io_context() noexcept(true) {
-            return *__M_ctx;
-        }
     };
 
   public:
@@ -124,9 +121,6 @@ template <typename PromiseData> class task_impl {
     promise_type& promise() noexcept(true) { return __M_h.promise(); }
     std::coroutine_handle<promise_type> get_handle() noexcept(true) {
         return __M_h;
-    }
-    io_context& get_associated_io_context() noexcept(true) {
-        return promise().get_associated_io_context();
     }
 
   protected:
@@ -182,7 +176,7 @@ template <typename T> struct future_impl {
 
         io_context* __M_ctx = nullptr;
         awaitable* __M_awa = nullptr;
-        std::coroutine_handle</*task_impl::promise_type*/> __M_parent;
+        std::coroutine_handle<> __M_parent;
 
         constexpr std::suspend_always initial_suspend() noexcept(true) {
             return {};
@@ -220,16 +214,20 @@ template <typename T> struct future_impl {
         }
         ~awaitable_base() { disconnect(); }
 
-        promise_type* self;
+        promise_type* self = nullptr;
 
-        constexpr bool await_ready() noexcept(true) { return false; }
-        template <typename R>
-        std::coroutine_handle<> await_suspend(std::coroutine_handle<R> parent) {
+        template <typename R> void set_parent(std::coroutine_handle<R> parent) {
             if (!self->__M_parent) {
                 self->__M_parent = parent;
                 self->__M_awa = static_cast<awaitable*>(this);
                 self->__M_ctx = parent.promise().__M_ctx;
             }
+        }
+
+        constexpr bool await_ready() noexcept(true) { return false; }
+        template <typename R>
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<R> parent) {
+            set_parent(parent);
             return std::coroutine_handle<promise_type>::from_promise(*self);
         }
 
@@ -373,141 +371,103 @@ template <typename T = void> struct future_view : public future<T> {
 };
 
 namespace detail::coroutine {
-struct awaitable_then_base {
-    virtual void reach() = 0;
-    virtual ~awaitable_then_base() = default;
-};
+template <typename T> struct [[nodiscard]] awaitable2 {
+    CHXNET_NONCOPYABLE;
 
-template <typename T> struct [[nodiscard]] awaitable_view {
-    CHXNET_NONCOPYABLE
+    struct view {
+        using value_type = T;
 
-    using value_type = T;
+        CHXNET_NONCOPYABLE;
+        friend struct awaitable2;
 
-    struct awaitable_inter {
-        CHXNET_NONCOPYABLE
+        struct awa {
+            view& self;
 
-        awaitable_view* pview = nullptr;
-        std::coroutine_handle<> h = {};
+            bool await_ready() noexcept(true) {
+                return self.__M_d.index() != 0;
+            }
+            void await_suspend(std::coroutine_handle<> h) noexcept(true) {
+                self.set_parent(h);
+            }
+            T await_resume() {
+                if (self.__M_d.index() == 2) {
+                    return std::move(std::get<2>(self.__M_d));
+                } else if (self.__M_d.index() == 1) {
+                    __CHXNET_THROW_EC(std::get<1>(self.__M_d));
+                } else {
+                    assert(false);
+                }
+            }
+        };
 
-        io_context::task_t* task = nullptr;
-        //
-        std::unique_ptr<awaitable_then_base> pthen;
-        //
-        constexpr awaitable_inter(io_context::task_t* t) noexcept(true)
-            : task(t) {}
-        awaitable_inter(awaitable_inter&& other)
-            : pview(std::exchange(other.pview, nullptr)),
-              h(std::exchange(other.h, {})),
-              task(std::exchange(other.task, nullptr)),
-              pthen(std::move(other.pthen)) {
-            if (pview) {
-                pview->__M_view = this;
+        view(view&& other)
+            : __M_d(std::move(other.__M_d)),
+              __M_impl(std::exchange(other.__M_impl, nullptr)) {
+            if (__M_impl) {
+                __M_impl->__M_view = this;
             }
         }
-        ~awaitable_inter() {
-            if (pview) {
-                pview->__M_view = nullptr;
-            }
-        }
-
-        awaitable_view create_view() { return {this}; }
-        void resume_h() {
-            std::coroutine_handle<> old_h = std::exchange(h, {});
-            std::unique_ptr<awaitable_then_base> old_then(std::move(pthen));
-            if (pview) {
-                // how could pimpl be nullptr while then or h valid?
-                pview->disconnect();
-            }
-            if (old_then) {
-                old_then->reach();
-            } else if (old_h) {
-                old_h.resume();
+        ~view() noexcept(true) {
+            if (__M_impl) {
+                __M_impl->__M_view = nullptr;
+                __M_impl = nullptr;
             }
         }
 
-        void set_value(const std::error_code& ec) noexcept(true) {
-            if (pview) {
-                pview->__M_v.template emplace<2>(ec);
+        constexpr awa operator co_await() noexcept(true) { return {*this}; }
+
+        constexpr void set_parent(std::coroutine_handle<> h) noexcept(true) {
+            if (__M_impl) {
+                __M_impl->__M_h = h;
             }
         }
-        template <typename... Rs>
-        void set_value(Rs&&... rs) noexcept(
-            std::is_nothrow_constructible_v<T, decltype(rs)...>) {
-            if (pview) {
-                pview->__M_v.template emplace<1>(std::forward<Rs>(rs)...);
-            }
+
+      private:
+        constexpr view(awaitable2* impl) noexcept(true) : __M_impl(impl) {
+            impl->__M_view = this;
         }
-        constexpr io_context& get_associated_io_context() noexcept(true) {
-            return task->get_associated_io_context();
-        }
+
+        std::variant<std::monostate, std::error_code, T> __M_d;
+        awaitable2* __M_impl = nullptr;
     };
 
-    awaitable_view(awaitable_inter* v) : __M_view(v) { __M_view->pview = this; }
-    awaitable_view(awaitable_view&& other)
+    constexpr awaitable2(io_context::task_t* t) noexcept(true) : __M_task(t) {}
+    constexpr awaitable2(awaitable2&& other) noexcept(true)
         : __M_view(std::exchange(other.__M_view, nullptr)),
-          __M_v(std::move(other.__M_v)) {
-        assert(__M_view);
-        __M_view->pview = this;
-    }
-    ~awaitable_view() { disconnect(); }
-
-    struct awaitable {
-        awaitable_view& pimpl;
-
-        constexpr bool await_ready() noexcept(true) { return pimpl.ready(); }
-        constexpr void await_suspend(std::coroutine_handle<> h) noexcept(true) {
-            return pimpl.suspend(h);
+          __M_h(std::exchange(other.__M_h, {})),
+          __M_task(std::exchange(other.__M_task, nullptr)) {
+        if (__M_view) {
+            __M_view->__M_impl = this;
         }
-        T await_resume() { return pimpl.resume(); }
-    };
-    friend struct awaitable;
-    friend struct awaitable_inter;
-    //
-    friend struct when_any_impl;
-    //
-
-    auto operator co_await() noexcept(true) { return awaitable{*this}; }
-    auto get_await() noexcept(true) { return awaitable{*this}; }
-
-    constexpr io_context& get_associated_io_context() noexcept(true) {
-        return __M_view->get_associated_io_context();
     }
-    cancellation_signal get_cancellation_signal() {
-        cancellation_signal s;
-        detail::async_operation<detail::tags::cancellation_assign>()(
-            s, get_associated_task());
-        return std::move(s);
-    }
-
-    constexpr bool connected() const noexcept(true) { return __M_view; }
-    constexpr void disconnect() noexcept(true) {
-        if (connected()) {
-            __M_view->pview = nullptr;
-            // __M_view->pthen = nullptr;
-            __M_view->h = {};
-            __M_view->pthen.reset();
-            __M_view = nullptr;
+    constexpr ~awaitable2() noexcept(true) {
+        if (__M_view) {
+            __M_view->__M_impl = nullptr;
         }
     }
 
-  protected:
-    awaitable_inter* __M_view = nullptr;
-    std::variant<std::monostate, T, std::error_code> __M_v;
-
-    constexpr bool ready() noexcept(true) { return __M_v.index() != 0; }
-    constexpr void suspend(std::coroutine_handle<> h) noexcept(true) {
-        assert(__M_view);
-        __M_view->h = h;
-    }
-    T resume() {
-        if (__M_v.index() == 2) {
-            __CHXNET_THROW_EC(std::get<2>(__M_v));
+    view create_view() noexcept(true) { return {this}; }
+    void resume_h() {
+        if (__M_view && __M_h && !__M_h.done()) {
+            std::exchange(__M_h, {}).resume();
         }
-        return std::move(std::get<1>(__M_v));
     }
 
-    constexpr io_context::task_t* get_associated_task() noexcept(true) {
-        return __M_view->task;
+    view* __M_view = nullptr;
+    std::coroutine_handle<> __M_h;
+    task_decl* __M_task = nullptr;
+
+    void set_value(const std::error_code& ec) noexcept(true) {
+        if (__M_view) {
+            __M_view->__M_d.template emplace<1>(ec);
+        }
+    }
+    template <typename... Rs>
+    void set_value(Rs&&... rs) noexcept(
+        std::is_nothrow_constructible_v<T, decltype(rs)...>) {
+        if (__M_view) {
+            __M_view->__M_d.template emplace<2>(std::forward<Rs>(rs)...);
+        }
     }
 };
 
@@ -515,6 +475,8 @@ template <typename T> struct [[nodiscard]] multishot_awaitable {
     CHXNET_NONCOPYABLE
 
     struct view {
+        using value_type = T;
+
         friend struct multishot_awaitable;
 
         CHXNET_NONCOPYABLE
@@ -549,6 +511,12 @@ template <typename T> struct [[nodiscard]] multishot_awaitable {
 
         constexpr awa operator co_await() noexcept(true) { return {*this}; }
 
+        constexpr void set_parent(std::coroutine_handle<> h) noexcept(true) {
+            if (__M_impl) {
+                __M_impl->__M_h = h;
+            }
+        }
+
       protected:
         view(multishot_awaitable* impl) noexcept(true) : __M_impl(impl) {
             __M_impl->__M_view = this;
@@ -562,7 +530,7 @@ template <typename T> struct [[nodiscard]] multishot_awaitable {
         }
         constexpr void
         __await_suspend(std::coroutine_handle<> h) noexcept(true) {
-            __M_impl->__M_h = h;
+            set_parent(h);
         }
         T __await_resume() {
             if (__M_q.empty()) {
@@ -600,7 +568,7 @@ template <typename T> struct [[nodiscard]] multishot_awaitable {
 
     view create_view() { return {this}; }
     void resume_h() {
-        if (__M_h) {
+        if (__M_h && !__M_h.done()) {
             std::exchange(__M_h, {}).resume();
         }
     }
@@ -618,162 +586,11 @@ template <typename T> struct [[nodiscard]] multishot_awaitable {
                                     std::forward<Rs>(rs)...);
         }
     }
-
-    constexpr io_context& get_associated_io_context() noexcept(true) {
-        return __M_t->get_associated_io_context();
-    }
-};
-
-struct when_any_impl {
-    template <typename T>
-    using extract_value_type = typename std::remove_reference_t<T>::value_type;
-
-    template <typename... Awaitables> struct await_collection {
-        template <typename... Ts>
-        await_collection(Ts&&... ts) : await_tp(std::forward<Ts>(ts)...) {
-            before();
-        }
-
-        auto operator co_await() {
-            struct awaitable {
-                await_collection* self;
-
-                constexpr bool await_ready() noexcept(true) {
-                    return self->first_idx != 0;
-                }
-                constexpr void
-                await_suspend(std::coroutine_handle<> h) noexcept(true) {
-                    self->handle = h;
-                }
-                auto await_resume() {
-                    struct content {
-                        content(
-                            std::variant<std::error_code,
-                                         extract_value_type<Awaitables>...>&& v,
-                            std::size_t i)
-                            : val(std::move(v)), index(i) {}
-                        std::variant<std::error_code,
-                                     extract_value_type<Awaitables>...>
-                            val;
-                        std::size_t index;
-                    };
-                    return content(std::move(self->val), self->first_idx);
-                }
-            };
-            return awaitable{this};
-        }
-
-        std::variant<std::error_code, extract_value_type<Awaitables>...> val;
-        std::size_t first_idx = 0;
-        std::tuple<Awaitables...> await_tp;
-        std::array<cancellation_signal, sizeof...(Awaitables)> can;
-        std::coroutine_handle<> handle;
-
-        template <std::size_t TpIdx> struct then_impl : awaitable_then_base {
-            await_collection* self;
-
-            then_impl(await_collection* s) noexcept(true) : self(s) {}
-
-            template <std::size_t Idx> void disarm() {
-                if constexpr (Idx < sizeof...(Awaitables)) {
-                    if constexpr (Idx != TpIdx) {
-                        auto& target_tp = std::get<Idx>(self->await_tp);
-                        target_tp.disconnect();
-                    }
-                    disarm<Idx + 1>();
-                }
-            }
-
-            template <std::size_t Idx> void exclude() {
-                if constexpr (Idx < sizeof...(Awaitables)) {
-                    if constexpr (Idx != TpIdx) {
-                        self->can[Idx].emit();
-                    }
-                    exclude<Idx + 1>();
-                }
-            }
-
-            void reach() override {
-                self->first_idx = TpIdx + 1;
-                disarm<0>();
-                exclude<0>();
-                auto& target = std::get<TpIdx>(self->await_tp);
-                if (target.__M_v.index() == 1) {
-                    self->val.template emplace<TpIdx + 1>(
-                        std::move(std::get<1>(target.__M_v)));
-                } else {
-                    self->val.template emplace<0>(
-                        std::move(std::get<2>(target.__M_v)));
-                }
-                if (self->handle) {
-                    self->handle.resume();
-                }
-            }
-        };
-
-        template <std::size_t Idx> void prep() {
-            if constexpr (Idx != sizeof...(Awaitables)) {
-                auto& a = std::get<Idx>(await_tp);
-                if (a.connected()) {
-                    can[Idx] = a.get_cancellation_signal();
-                } else if (a.ready() && first_idx == 0) {
-                    // only cares about 1st awaitable
-                    first_idx = Idx + 1;
-                    if (a.__M_v.index() == 1) {
-                        val.template emplace<Idx + 1>(
-                            std::move(std::get<1>(a.__M_v)));
-                    } else {
-                        val.template emplace<0>(std::get<2>(a.__M_v));
-                    }
-                }
-                prep<Idx + 1>();
-            }
-        }
-
-        template <std::size_t Idx> void assign() {
-            if constexpr (Idx != sizeof...(Awaitables)) {
-                auto& target = std::get<Idx>(await_tp);
-                if (target.connected()) {
-                    target.__M_view->pthen =
-                        std::make_unique<then_impl<Idx>>(this);
-                }
-                assign<Idx + 1>();
-            }
-        }
-
-        template <std::size_t Idx> void disconnect_all() {
-            if constexpr (Idx != sizeof...(Awaitables)) {
-                auto& target = std::get<Idx>(await_tp);
-                if (target.connected()) {
-                    target.disconnect();
-                }
-                disconnect_all<Idx + 1>();
-            }
-        }
-
-        void before() {
-            prep<0>();
-            if (first_idx == 0) {
-                // nothing is ready now
-                assign<0>();
-            } else {
-                // we already have one
-                for (auto& i : can) {
-                    i.emit();
-                }
-                disconnect_all<0>();
-            }
-        }
-    };
-    template <typename... Awaitables>
-    await_collection(Awaitables&&...) -> await_collection<
-        std::conditional_t<std::is_lvalue_reference_v<Awaitables>, Awaitables&&,
-                           std::remove_reference_t<Awaitables>>...>;
 };
 }  // namespace detail::coroutine
 
 template <typename T>
-using awaitable = typename detail::coroutine::awaitable_view<T>;
+using awaitable = typename detail::coroutine::awaitable2<T>::view;
 
 namespace detail::coroutine {
 template <typename FinalFunctor, typename Token>
@@ -844,9 +661,9 @@ template <typename AwaitableView> struct callable_impl {
 
 template <bool use_multishot, typename... Ts> struct ops {
     using value_type = std::decay_t<typename get_tail_type<Ts...>::type>;
-    using awaitable_inter_type = std::conditional_t<
-        use_multishot, multishot_awaitable<value_type>,
-        typename awaitable_view<value_type>::awaitable_inter>;
+    using awaitable_inter_type =
+        std::conditional_t<use_multishot, multishot_awaitable<value_type>,
+                           awaitable2<value_type>>;
 
     using callable_type = callable_impl<awaitable_inter_type>;
     using attribute_type = attribute<async_token>;
@@ -940,11 +757,5 @@ decltype(auto) co_spawn(io_context& ctx, Task&& t,
     return async_combine<const std::error_code&>(
         ctx, std::forward<CompletionToken>(completion_token),
         detail::type_identity<operation_type>{}, std::forward<Task>(t));
-}
-
-template <typename... Awaitables>
-decltype(auto) when_any(Awaitables&&... awaitables) {
-    return detail::coroutine::when_any_impl::await_collection(
-        std::forward<Awaitables>(awaitables)...);
 }
 }  // namespace chx::net

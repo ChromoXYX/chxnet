@@ -16,10 +16,11 @@ struct has_begin_and_end_impl {
 
 template <typename T, typename Target> struct is_buffer_sequence_impl {
     static auto f() {
-        if constexpr (std::is_constructible_v<has_begin_and_end_impl, T>) {
+        if constexpr (is_container<T>::value) {
             if constexpr (std::is_constructible_v<
-                              Target, std::add_lvalue_reference_t<
-                                          typename T::value_type>>) {
+                              Target, typename std::pointer_traits<
+                                          decltype(std::declval<T>().data())>::
+                                          element_type>) {
                 return std::true_type{};
             } else {
                 return std::false_type{};
@@ -31,12 +32,12 @@ template <typename T, typename Target> struct is_buffer_sequence_impl {
     using type = decltype(f());
 };
 
-inline constexpr const struct iovec to_iovec_const(
-    const const_buffer& b) noexcept(true) {
+inline constexpr const struct iovec
+to_iovec_const(const const_buffer& b) noexcept(true) {
     return {const_cast<void*>(b.data()), b.size()};
 }
-inline constexpr struct iovec to_iovec_mutable(
-    const mutable_buffer& b) noexcept(true) {
+inline constexpr struct iovec
+to_iovec_mutable(const mutable_buffer& b) noexcept(true) {
     return {b.data(), b.size()};
 }
 template <std::size_t... Is, typename T>
@@ -76,7 +77,7 @@ struct is_mutable_buffer_sequence
 /**
  * @brief Helper class to determine whether the type meets the requirements of
  * ConstBufferSequence.
- * 
+ *
  */
 template <typename T, std::size_t Size>
 struct is_const_buffer_sequence<T[Size]>

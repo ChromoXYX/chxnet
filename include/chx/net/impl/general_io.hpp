@@ -10,6 +10,8 @@
 
 #include "../detail/io_uring_task_getter.hpp"
 
+#include "../iovec_buffer.hpp"
+
 #include <netinet/in.h>
 
 namespace chx::net::detail::tags {
@@ -205,10 +207,23 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::read_until> {
                               CompletionToken&&);
 };
 
-template <typename T> struct fill_iov_made : std::false_type {};
-template <> struct fill_iov_made<std::vector<struct iovec>> : std::true_type {};
-template <std::size_t N>
-struct fill_iov_made<std::array<struct iovec, N>> : std::true_type {};
+// template <typename T> struct fill_iov_made : std::false_type {};
+// template <> struct fill_iov_made<std::vector<struct iovec>> : std::true_type
+// {}; template <std::size_t N> struct fill_iov_made<std::array<struct iovec,
+// N>> : std::true_type {};
+
+namespace chx::net::detail {
+template <typename T> constexpr bool is_iovec_list() noexcept(true) {
+    if constexpr (is_container<T>::value) {
+        using value_type = std::decay_t<typename std::pointer_traits<
+            decltype(std::declval<T>().data())>::element_type>;
+        return std::is_same_v<value_type, iovec> ||
+               std::is_same_v<value_type, iovec_buffer>;
+    } else {
+        return false;
+    }
+}
+}  // namespace chx::net::detail
 
 template <typename Socket, typename ConstBufferSequence,
           typename CompletionToken>
@@ -217,33 +232,10 @@ operator()(io_context* ctx, Socket* sock,
            ConstBufferSequence&& const_buffer_sequence,
            CompletionToken&& completion_token) -> decltype(auto) {
     io_context::task_t* task = ctx->acquire();
-    if constexpr (!fill_iov_made<std::decay_t<ConstBufferSequence>>::value) {
-        using __type = is_const_buffer_sequence<
-            std::remove_reference_t<ConstBufferSequence>>;
-        io_uring_sqe* sqe = nullptr;
-        if constexpr (__type::has_static_size) {
-            const auto iovec_arr = generate_iovec_array_const(
-                const_buffer_sequence,
-                std::make_integer_sequence<std::size_t, __type::static_size>());
-            sqe = ctx->get_sqe(task);
-            io_uring_prep_writev(sqe, sock->native_handler(), iovec_arr.data(),
-                                 iovec_arr.size(), 0);
-            ctx->submit();
-        } else {
-            std::size_t iovec_len =
-                std::min(std::distance(const_buffer_sequence.begin(),
-                                       const_buffer_sequence.end()),
-                         1024);
-            std::vector<struct iovec> iovec_vec(iovec_len);
-            auto iterator = const_buffer_sequence.begin();
-            for (auto& iov : iovec_vec) {
-                iov = detail::to_iovec_const(const_buffer(*(iterator++)));
-            }
-            sqe = ctx->get_sqe(task);
-            io_uring_prep_writev(sqe, sock->native_handler(), iovec_vec.data(),
-                                 iovec_vec.size(), 0);
-            ctx->submit();
-        }
+    if constexpr (!is_iovec_list<std::decay_t<ConstBufferSequence>>()) {
+        static_assert(false,
+                      "async_write_some(ConstBufferSequence) only accept "
+                      "contiguous container of iovec or iovec_buffer");
     } else {
         io_uring_sqe* sqe = ctx->get_sqe(task);
         io_uring_prep_writev(
@@ -317,28 +309,15 @@ operator()(io_context* ctx, Socket* sock,
            MutableBufferSequence&& mutable_buffer_sequence,
            CompletionToken&& completion_token) -> decltype(auto) {
     io_context::task_t* task = ctx->acquire();
-    using __type = is_mutable_buffer_sequence<
-        std::remove_reference_t<MutableBufferSequence>>;
-    io_uring_sqe* sqe = nullptr;
-    if constexpr (__type::has_static_size) {
-        auto iovec_arr = generate_iovec_array_mutable(
-            mutable_buffer_sequence,
-            std::make_integer_sequence<std::size_t, __type::static_size>());
-        sqe = ctx->get_sqe(task);
-        io_uring_prep_readv(sqe, sock->native_handler(), iovec_arr.data(),
-                            iovec_arr.size(), 0);
-        ctx->submit();
+    if constexpr (!is_iovec_list<std::decay_t<MutableBufferSequence>>()) {
+        static_assert(false,
+                      "async_read_some(MutableBufferSequence) only accept "
+                      "contiguous container of iovec or iovec_buffer");
     } else {
-        std::vector<struct iovec> iovec_vec(std::distance(
-            mutable_buffer_sequence.begin(), mutable_buffer_sequence.end()));
-        auto iterator = iovec_vec.begin();
-        for (auto& i : mutable_buffer_sequence) {
-            *(iterator++) = detail::to_iovec_mutable(mutable_buffer(i));
-        }
-        sqe = ctx->get_sqe(task);
-        io_uring_prep_readv(sqe, sock->native_handler(), iovec_vec.data(),
-                            iovec_vec.size(), 0);
-        ctx->submit();
+        io_uring_sqe* sqe = ctx->get_sqe(task);
+        io_uring_prep_readv(
+            sqe, sock->native_handler(), mutable_buffer_sequence.data(),
+            std::min(mutable_buffer_sequence.size(), std::size_t{1024}), 0);
     }
 
     return detail::async_token_init(

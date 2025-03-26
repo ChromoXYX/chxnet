@@ -111,7 +111,7 @@ struct chx::net::detail::async_operation<
         io_uring_prep_accept(sqe, acceptor->native_handler(), nullptr, nullptr,
                              0);
 
-        task->__M_additional = reinterpret_cast<std::uint64_t>(acceptor);
+        task->__M_additional_val = reinterpret_cast<std::uint64_t>(acceptor);
         return detail::async_token_init(
             task->__M_token.emplace(detail::async_token_generate(
                 task,
@@ -119,7 +119,7 @@ struct chx::net::detail::async_operation<
                    io_context::task_t* self) mutable -> int {
                     auto* acceptor =
                         reinterpret_cast<typename Protocol::acceptor*>(
-                            self->__M_additional);
+                            self->__M_additional_val);
                     int res = get_res(self);
                     completion_token(get_ec(self),
                                      typename Protocol::socket(

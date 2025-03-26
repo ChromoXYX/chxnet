@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../error_code.hpp"
+#include "../exception.hpp"
 
 #include <openssl/err.h>
 
@@ -32,7 +33,18 @@ inline std::error_category& error_category() noexcept(true) {
     return c;
 }
 
+class openssl_exception : public net::exception {
+  public:
+    using exception::exception;
+};
+
 namespace detail {
+inline std::string last_error() {
+    char buf[256] = {};
+    ERR_error_string_n(ERR_get_error(), buf, sizeof(buf));
+    return {buf};
+}
+
 inline std::error_code make_ssl_ec(int value) noexcept(true) {
     return net::make_ec(value, ssl::error_category());
 }
