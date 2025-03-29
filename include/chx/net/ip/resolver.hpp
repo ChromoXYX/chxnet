@@ -99,7 +99,7 @@ class resolver {
     decltype(auto) async_resolve(std::string hostname,
                                  CompletionToken&& completion_token);
     void stop() {
-        __M_stop.store(true, std::memory_order_acq_rel);
+        __M_stop.store(true);
         const std::size_t n = __M_pool.size();
         for (std::size_t i = 0; i < n; ++i) {
             __M_ch.post(nullptr);
