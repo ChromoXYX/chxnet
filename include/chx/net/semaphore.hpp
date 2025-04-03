@@ -20,6 +20,10 @@ class semaphore {
     decltype(auto) async_acquire(CompletionToken&& completion_token);
 
     void release(unsigned long c = 1) { __M_interrupter.do_interrupt(c); }
+
+    template <typename CompletionToken>
+    decltype(auto) async_acquire_shared(io_context& ctx,
+                                        CompletionToken&& completion_token);
 };
 }  // namespace chx::net
 

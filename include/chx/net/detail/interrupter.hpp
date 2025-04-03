@@ -26,7 +26,7 @@ struct interrupter {
     std::size_t __M_inbuf = 0;
     constexpr static inline std::size_t wr_buf = 1;
 
-    void do_read(io_uring_sqe* sqe, void* user_data) {
+    void do_read(io_uring_sqe* sqe, void* user_data) noexcept(true) {
         io_uring_prep_read(sqe, __M_efd, &__M_inbuf, 8, 0);
         io_uring_sqe_set_data(sqe, user_data);
     }

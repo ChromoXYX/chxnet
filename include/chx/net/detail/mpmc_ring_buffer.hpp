@@ -27,6 +27,7 @@ template <typename T, std::size_t Cap> struct mpmc_ring_buffer {
     T pop() noexcept(true) {
         std::atomic_thread_fence(std::memory_order_acquire);
         std::size_t read = read_head.load(std::memory_order_acquire);
+        unsigned backoff = 1;
         for (;;) {
             slot* slot = &slots[read % Cap];
             std::size_t seq = slot->seq.load(std::memory_order_acquire);
@@ -40,8 +41,15 @@ template <typename T, std::size_t Cap> struct mpmc_ring_buffer {
                         read, read + 1, std::memory_order_acq_rel)) {
                     break;
                 }
+                if (backoff < 1024) {
+                    backoff *= 2;
+                }
+                for (unsigned i = 0; i < backoff; ++i) {
+                    std::atomic_thread_fence(std::memory_order_relaxed);
+                }
             } else {
                 read = read_head.load(std::memory_order_relaxed);
+                backoff = 1;
             }
         }
         slot* slot = &slots[read % Cap];
@@ -54,6 +62,7 @@ template <typename T, std::size_t Cap> struct mpmc_ring_buffer {
     bool push(T t) noexcept(true) {
         std::atomic_thread_fence(std::memory_order_acquire);
         std::size_t write = write_head.load(std::memory_order_acquire);
+        unsigned backoff = 1;
         for (;;) {
             slot* slot = &slots[write % Cap];
             std::size_t seq = slot->seq.load(std::memory_order_acquire);
@@ -66,8 +75,15 @@ template <typename T, std::size_t Cap> struct mpmc_ring_buffer {
                         write, write + 1, std::memory_order_acq_rel)) {
                     break;
                 }
+                if (backoff < 1024) {
+                    backoff *= 2;
+                }
+                for (unsigned i = 0; i < backoff; ++i) {
+                    std::atomic_thread_fence(std::memory_order_relaxed);
+                }
             } else {
                 write = write_head.load(std::memory_order_relaxed);
+                backoff = 1;
             }
         }
         slot* slot = &slots[write % Cap];

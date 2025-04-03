@@ -348,16 +348,14 @@ class io_context {
 
   public:
     io_context(struct io_uring_params params = {},
-               std::size_t static_task_sz = 1024 * 1024 * 2 / sizeof(task_t))
+               std::size_t static_task_sz = 32768)
         : __M_ring_sz(static_task_sz > 4096 ? static_task_sz : 4096),
           __M_outstanding_task_list(this) {
         params.flags |= IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN;
-        params.features |=
-            IORING_FEAT_FAST_POLL | IORING_FEAT_CQE_SKIP | IORING_FEAT_NODROP;
         if (int r = io_uring_queue_init_params(__M_ring_sz, &__M_ring, &params);
             r != 0) {
-            rethrow_with_fatal(std::make_exception_ptr(
-                __CHXNET_MAKE_EX_CSTR("io_uring_queue_init_params failed")));
+            rethrow_with_fatal(
+                std::make_exception_ptr(__CHXNET_MAKE_EX_CODE(-r)));
         }
         __M_interrupter.do_read(get_sqe(), &__M_interrupter);
     }

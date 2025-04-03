@@ -138,6 +138,26 @@ class stream_base {
         }
     }
 
+    void set_nonblock(std::error_code& ec) noexcept(true) {
+        int old = fcntl(native_handler(), F_GETFL, 0);
+        if (old == -1) {
+            assign_ec(ec, errno);
+            return;
+        }
+        int r = fcntl(native_handler(), F_SETFL, old | O_NONBLOCK);
+        if (r == -1) {
+            assign_ec(ec, errno);
+            return;
+        }
+    }
+    void set_nonblock() {
+        std::error_code ec;
+        set_nonblock(ec);
+        if (ec) {
+            __CHXNET_THROW_EC(ec);
+        }
+    }
+
     void close() {
         std::error_code ec;
         close(ec);

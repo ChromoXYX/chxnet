@@ -10,9 +10,9 @@ struct real_semaphore {};
 
 template <> struct async_operation<tags::real_semaphore> {
     template <typename BindCompletionToken>
-    decltype(auto) operator()(semaphore* self,
+    decltype(auto) operator()(semaphore* self, io_context* ctx,
                               BindCompletionToken&& bind_completion_token) {
-        auto [sqe, task] = self->get_associated_io_context().get();
+        auto [sqe, task] = ctx->get();
         self->__M_interrupter.do_read(sqe, task);
         return async_token_init(task->__M_token.emplace(async_token_generate(
                                     task,
@@ -34,6 +34,17 @@ template <typename CompletionToken>
 decltype(auto)
 chx::net::semaphore::async_acquire(CompletionToken&& completion_token) {
     return detail::async_operation<detail::tags::real_semaphore>()(
-        this, detail::async_token_bind<const std::error_code&>(
-                  std::forward<CompletionToken>(completion_token)));
+        this, &get_associated_io_context(),
+        detail::async_token_bind<const std::error_code&>(
+            std::forward<CompletionToken>(completion_token)));
+}
+
+template <typename CompletionToken>
+decltype(auto)
+chx::net::semaphore::async_acquire_shared(io_context& ctx,
+                                          CompletionToken&& completion_token) {
+    return detail::async_operation<detail::tags::real_semaphore>()(
+        this, &ctx,
+        detail::async_token_bind<const std::error_code&>(
+            std::forward<CompletionToken>(completion_token)));
 }
