@@ -15,6 +15,8 @@
 #include "./cancellation.hpp"
 #include "./async_combine.hpp"
 
+#include <memory_resource>
+
 namespace chx::net {
 namespace detail {
 struct this_context_t {
@@ -40,6 +42,11 @@ struct this_coro_t {
         }
     };
 };
+
+inline std::pmr::memory_resource& tls_coro_allocator() {
+    thread_local std::pmr::unsynchronized_pool_resource m;
+    return m;
+}
 }  // namespace detail
 inline constexpr struct detail::this_coro_t this_coro = {};
 
@@ -90,6 +97,13 @@ template <typename PromiseData> class task_impl {
 
         constexpr void set_io_context(io_context* ctx) noexcept(true) {
             __M_ctx = ctx;
+        }
+
+        void* operator new(std::size_t n) {
+            return tls_coro_allocator().allocate(n);
+        }
+        void operator delete(void* ptr, std::size_t bytes) {
+            tls_coro_allocator().deallocate(ptr, bytes);
         }
     };
 
