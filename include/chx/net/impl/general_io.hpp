@@ -186,6 +186,10 @@ struct chx::net::detail::async_operation<chx::net::detail::tags::simple_write> {
     template <typename Socket, typename CompletionToken>
     decltype(auto) operator()(io_context*, Socket*, const const_buffer&,
                               CompletionToken&&);
+
+    template <typename Socket, typename CompletionToken>
+    decltype(auto) zero_copy(io_context*, Socket*, const const_buffer&,
+                             CompletionToken&&);
 };
 
 template <>
@@ -270,6 +274,51 @@ operator()(io_context* ctx, Socket* sock, const const_buffer& buf,
                io_context::task_t* self) mutable -> int {
                 completion_token(get_ec(self),
                                  static_cast<std::size_t>(get_res(self)));
+                return 0;
+            },
+            std::forward<CompletionToken>(completion_token))),
+        std::forward<CompletionToken>(completion_token));
+}
+
+template <typename Socket, typename CompletionToken>
+auto chx::net::detail::async_operation<chx::net::detail::tags::simple_write>::
+    zero_copy(io_context* ctx, Socket* sock, const const_buffer& buf,
+              CompletionToken&& completion_token) -> decltype(auto) {
+    io_context::task_t* task = ctx->acquire();
+    task->__M_notif = true;
+    auto* sqe = ctx->get_sqe(task);
+    io_uring_prep_send_zc(sqe, sock->native_handler(), buf.data(), buf.size(),
+                          0, 0);
+
+    return detail::async_token_init(
+        task->__M_token.emplace(detail::async_token_generate(
+            task,
+            [res = 0](auto& completion_token,
+                      io_context::task_t* self) mutable -> int {
+                /*
+                The notification's res field will be
+              set to zero and the flags field will contain
+              IORING_CQE_F_NOTIF.
+                Note, notifications are only
+              responsible for controlling the lifetime of the buffers,
+              and as such don't mean anything about whether the data has
+              atually been sent out or received by the other end. Even
+              errored requests may generate a notification, and the user
+              must check for IORING_CQE_F_MORE rather than relying on the
+              result.
+
+              ie, e and sz should be collected at 1st stage.
+              and completion token should be invoked if f_more is not set.
+                */
+
+                // collect res
+                if (res == 0) {
+                    res = self->__M_cqe->res;
+                }
+                if (!(self->__M_cqe->flags & IORING_CQE_F_MORE)) {
+                    completion_token(
+                        res >= 0 ? std::error_code{} : make_ec(-res), res);
+                }
                 return 0;
             },
             std::forward<CompletionToken>(completion_token))),

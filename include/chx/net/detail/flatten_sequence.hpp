@@ -7,7 +7,8 @@
 #include "./sfinae_placeholder.hpp"
 #include "../iovec_buffer.hpp"
 
-namespace chx::net::detail {
+namespace chx::net {
+namespace detail {
 struct flatten_sequence_impl {
     template <typename> struct is_tuple : std::false_type {};
     template <typename... Ts>
@@ -301,15 +302,15 @@ struct flatten_sequence_impl {
         }
     }
 };
+}  // namespace detail
 
 template <typename Sequence>
-using flatten_sequence_type =
-    std::invoke_result_t<decltype(flatten_sequence_impl::fill_iov<Sequence&>),
-                         Sequence&>;
+using flatten_sequence_type = std::invoke_result_t<
+    decltype(detail::flatten_sequence_impl::fill_iov<Sequence&>), Sequence&>;
 
 template <typename Sequence>
 constexpr auto flatten_sequence(Sequence& seq)
     -> flatten_sequence_type<Sequence> {
-    return flatten_sequence_impl::fill_iov(seq);
+    return detail::flatten_sequence_impl::fill_iov(seq);
 }
-}  // namespace chx::net::detail
+}  // namespace chx::net

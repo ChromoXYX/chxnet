@@ -113,5 +113,19 @@ class tcp::socket : public detail::basic_socket<tcp> {
             __CHXNET_THROW_EC(ec);
         }
     }
+
+    template <typename ConstBuffer, typename CompletionToken>
+    decltype(auto) async_write_some_zero_copy(
+        ConstBuffer&& const_buffer, CompletionToken&& completion_token,
+        net::detail::sfinae_placeholder<
+            std::enable_if_t<net::detail::is_const_buffer<ConstBuffer>::value>>
+            _ = net::detail::sfinae) {
+        return net::detail::async_operation<net::detail::tags::simple_write>()
+            .zero_copy(&get_associated_io_context(), this,
+                       std::forward<ConstBuffer>(const_buffer),
+                       net::detail::async_token_bind<const std::error_code&,
+                                                     std::size_t>(
+                           std::forward<CompletionToken>(completion_token)));
+    }
 };
 }  // namespace chx::net::ip

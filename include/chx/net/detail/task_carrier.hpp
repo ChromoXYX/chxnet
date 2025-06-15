@@ -1,6 +1,5 @@
 #pragma once
 
-#include "./type_identity.hpp"
 #include "../async_token.hpp"
 #include <utility>
 
@@ -52,9 +51,9 @@ struct task_carrier_s2 {
     }
     template <typename TI> constexpr decltype(auto) get_init(TI ti) {
         callback(task, ti,
-                 type_identity<typename std::pointer_traits<decltype(get_s3(
-                     static_cast<typename TI::type*>(
-                         task->get_underlying_data())))>::element_type>{});
+                 std::addressof(get_s3(static_cast<typename TI::type*>(
+                                           task->get_underlying_data()))
+                                    ->data));
         return async_token_init(ti, bind_completion_token);
     }
 };

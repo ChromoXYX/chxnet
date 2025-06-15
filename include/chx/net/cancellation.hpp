@@ -97,9 +97,7 @@ decltype(auto) bind_cancellation_signal(cancellation_signal& signal,
                                         CompletionToken&& completion_token) {
     return detail::task_carrier_s1(
         std::forward<CompletionToken>(completion_token), detail::owner_guard{},
-        [&signal](task_decl* task, auto ti, auto c) {
-            detail::owner_guard* g =
-                &c(ti.cast(task->get_underlying_data()))->data;
+        [&signal](task_decl* task, auto ti, detail::owner_guard* g) {
             detail::async_operation<detail::tags::cancellation_assign>()(
                 signal, task, *g);
         });

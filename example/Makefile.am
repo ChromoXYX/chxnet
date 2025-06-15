@@ -4,7 +4,7 @@ bin_PROGRAMS = chxnet_echo chxnet_udp chxnet_ktimer \
     chxnet_sendfile chxnet_semaphore \
     chxnet_reusable_coro chxnet_multi \
     chxnet_poll chxnet_thread_executor \
-    chxnet_resolver
+    chxnet_resolver chxnet_zc
 
 if CHXNET_WITH_LLHTTP
 bin_PROGRAMS += chxnet_http
@@ -36,3 +36,5 @@ chxnet_thread_executor_SOURCES = thread_executor.cpp
 chxnet_thread_executor_LDADD = @__CHXNET_EXEC_LDADD@
 chxnet_resolver_SOURCES = resolver.cpp
 chxnet_resolver_LDADD = @__CHXNET_EXEC_LDADD@
+chxnet_zc_SOURCES = zc.cpp
+chxnet_zc_LDADD = @__CHXNET_EXEC_LDADD@

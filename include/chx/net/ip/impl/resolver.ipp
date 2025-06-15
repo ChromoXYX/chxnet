@@ -107,7 +107,7 @@ template <> struct async_operation<tags::resolver> {
 };
 }  // namespace detail
 
-ip::resolver::resolver(io_context& ctx, std::size_t n)
+inline ip::resolver::resolver(io_context& ctx, std::size_t n)
     : __M_ctx(&ctx), __M_ch(ctx) {
     for (std::size_t i = 0; i < n; ++i) {
         __M_pool.emplace_back(
@@ -128,9 +128,8 @@ decltype(auto) ip::resolver::async_resolve(std::string hostname,
             net::detail::async_token_bind<const std::error_code&,
                                           addrinfo_list>(
                 std::forward<CompletionToken>(completion_token)),
-            std::move(q), [this](task_decl* task, auto ti, auto qti) {
-                impl::query_type* q =
-                    &qti(ti.cast(task->get_underlying_data()))->data;
+            std::move(q),
+            [this](task_decl* task, auto ti, impl::query_type* q) {
                 task->__M_additional_ptr = q;
                 struct cancel_impl : task_decl::cancellation_controller_base {
                     void cancel(task_decl* self) override {
@@ -147,7 +146,7 @@ decltype(auto) ip::resolver::async_resolve(std::string hostname,
             }));
 }
 
-void ip::resolver::cancel() {
+inline void ip::resolver::cancel() {
     net::detail::async_operation<net::detail::tags::resolver>().cancel_all(
         this);
 }

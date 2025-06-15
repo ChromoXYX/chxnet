@@ -4,6 +4,7 @@
 #include "../async_write_sequence.hpp"
 #include "../detail/type_identity.hpp"
 #include "../detail/span.hpp"
+#include "./write_exactly.hpp"
 
 namespace chx::net::detail {
 namespace tags {
@@ -20,53 +21,31 @@ template <> struct async_operation<tags::write_seq_exactly> {
             flat_seq, std::forward<CompletionToken>(completion_token));
     }
 
-    template <typename Stream, typename RealSequence>
-    struct exactly_seq_managed {
+    template <typename Stream, typename RealSequence, typename CntlType = int>
+    struct exactly_seq_managed
+        : write_exactly<RealSequence,
+                        exactly_seq_managed<Stream, RealSequence, CntlType>> {
         CHXNET_NONCOPYABLE
-        template <typename CntlType> using rebind = exactly_seq_managed;
+        template <typename T>
+        using rebind = exactly_seq_managed<Stream, RealSequence, T>;
+
+        constexpr CntlType& cntl() noexcept(true) {
+            return static_cast<CntlType&>(*this);
+        }
+
         using __toolkit = flatten_sequence_impl;
 
         template <typename STRM, typename RS>
         exactly_seq_managed(STRM&& strm, RS&& rs)
-            : stream(std::forward<STRM>(strm)), real_seq(std::forward<RS>(rs)),
-              flat_sequence(flatten_sequence(real_seq)) {
-            for (const iovec& i : flat_sequence) {
-                total_size += i.iov_len;
-            }
-        }
+            : write_exactly<RealSequence, exactly_seq_managed<
+                                              Stream, RealSequence, CntlType>>(
+                  std::forward<RS>(rs)),
+              stream(std::forward<STRM>(strm)) {}
 
         Stream stream;
-        RealSequence real_seq;
 
-        flatten_sequence_type<RealSequence> flat_sequence;
-        std::size_t transferred = 0;
-        std::size_t total_size = 0;
-        std::size_t iovec_index = 0;
-
-        template <typename Cntl> void operator()(Cntl& cntl) {
-            async_write_seq3(stream, flat_sequence, cntl.next());
-        }
-        template <typename Cntl>
-        void operator()(Cntl& cntl, const std::error_code& e, std::size_t s) {
-            if (!e && s) {
-                if (transferred + s < total_size) {
-                    transferred += s;
-                    while (iovec_index < flat_sequence.size() &&
-                           s >= flat_sequence[iovec_index].iov_len) {
-                        s -= flat_sequence[iovec_index++].iov_len;
-                    }
-                    assert(iovec_index < flat_sequence.size() &&
-                           flat_sequence[iovec_index].iov_len > s);
-                    flat_sequence[iovec_index].iov_len -= s;
-                    span sp(flat_sequence.data() + iovec_index,
-                            flat_sequence.size() - iovec_index);
-                    async_write_seq3(stream, sp, cntl.next());
-                } else {
-                    cntl.complete(e, total_size);
-                }
-            } else {
-                cntl.complete(e, transferred);
-            }
+        void do_write(span<struct iovec> sp) {
+            stream.async_write_some(sp, cntl().next());
         }
     };
     template <typename Stream, typename RealSequence>

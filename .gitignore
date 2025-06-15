@@ -106,3 +106,5 @@ pkgconfig/chxnet.pc
 test/*
 !test/*.cpp
 !test/Makefile.am
+
+**/vgcore*
