@@ -87,6 +87,27 @@ class ktimer {
         }
     }
 
+    std::chrono::nanoseconds expired_after(std::error_code& ec) noexcept(true) {
+        struct itimerspec its = {};
+        std::chrono::nanoseconds remaining = std::chrono::nanoseconds::zero();
+        if (::timerfd_gettime(__M_fd, &its) == 0) {
+            remaining = std::chrono::seconds(its.it_value.tv_sec) +
+                        std::chrono::nanoseconds(its.it_value.tv_nsec);
+            ec.clear();
+        } else {
+            assign_ec(ec, errno);
+        }
+        return remaining;
+    }
+    std::chrono::nanoseconds expired_after() {
+        std::error_code ec;
+        auto r = expired_after(ec);
+        if (ec) {
+            __CHXNET_THROW_EC(ec);
+        }
+        return r;
+    }
+
     template <typename CompletionToken>
     decltype(auto) async_wait(CompletionToken&& completion_token) {
         return detail::async_operation<detail::tags::ktimer>()(

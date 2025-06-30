@@ -37,6 +37,7 @@ template <> struct async_operation<tags::fixed_timer_controller> {
                         __M_timer->__M_paused.erase(pos);
                     }
                 }
+                __M_timer->schedule();
                 exclude();
             }
         }
@@ -63,6 +64,7 @@ template <> struct async_operation<tags::fixed_timer_controller> {
                     __M_timer->__M_paused.emplace_back(std::move(ptr));
                 }
             }
+            __M_timer->schedule();
         }
         template <typename Rep, typename Period>
         void update(const std::chrono::duration<Rep, Period>& dur) {
@@ -153,7 +155,7 @@ template <> struct async_operation<tags::fixed_timer2> {
             new async_operation<tags::fixed_timer_controller>::controller<
                 Clock>(timer, task, tp));
 
-        timer->do_loop2();
+        timer->schedule();
 
         return async_token_init(
             task->__M_token.emplace(async_token_generate(
@@ -168,21 +170,66 @@ template <> struct async_operation<tags::fixed_timer2> {
             bind_completion_token);
     }
 
-    template <typename Clock> void do_loop2(basic_fixed_timer<Clock>* tmr) {
-        assert(!tmr->__M_is_looping);
-        tmr->__M_is_looping = true;
-        io_uring_prep_nop(
-            tmr->get_associated_io_context().get_sqe(&tmr->__M_task));
+    template <typename Clock> void do_poll(basic_fixed_timer<Clock>* tmr) {
+        if (!tmr->__M_is_polling) {
+            io_uring_prep_nop(
+                tmr->get_associated_io_context().get_sqe(&tmr->__M_poll_task));
+            tmr->__M_is_polling = true;
+        }
+    }
+    template <typename Clock>
+    void do_ktimer_poll(basic_fixed_timer<Clock>* tmr) {
+        if (!tmr->__M_is_ktimer_polling) {
+            tmr->__M_ktimer.expired_after(tmr->__M_res);
+            io_uring_sqe* sqe =
+                tmr->get_associated_io_context().get_sqe(&tmr->__M_timer_task);
+            io_uring_prep_read(sqe, tmr->__M_ktimer.native_handler(),
+                               &tmr->__M_timer_task.__M_additional_val, 8, 0);
+            tmr->__M_is_ktimer_polling = true;
+        }
     }
 };
 }  // namespace detail
 
 template <typename Clock>
-inline void chx::net::basic_fixed_timer<Clock>::do_loop2() {
-    if (!__M_is_looping &&
-        (!__M_heap.empty() || !__M_paused.empty() || !__M_trash.empty())) {
-        detail::async_operation<detail::tags::fixed_timer2>().do_loop2(this);
+inline void chx::net::basic_fixed_timer<Clock>::schedule() {
+    if (__M_is_polling) {
+        return;
     }
+    if (!__M_trash.empty()) {
+        return detail::async_operation<detail::tags::fixed_timer2>().do_poll(
+            this);
+    }
+    if (!__M_heap.empty()) {
+        const std::chrono::time_point<Clock>& first = __M_heap.begin()->first;
+        if (!__M_is_ktimer_polling) {
+            if (Clock::now() + __M_res > first) {
+                detail::async_operation<detail::tags::fixed_timer2>().do_poll(
+                    this);
+            } else {
+                detail::async_operation<detail::tags::fixed_timer2>()
+                    .do_ktimer_poll(this);
+            }
+        } else if (Clock::now() + __M_ktimer.expired_after() > first) {
+            detail::async_operation<detail::tags::fixed_timer2>().do_poll(this);
+        }
+    }
+}
+
+template <typename Clock>
+inline void chx::net::basic_fixed_timer<Clock>::callback() {
+    auto trash = std::move(__M_trash);
+    for (auto& ptr : trash) {
+        ptr->__M_token(ptr.get());
+    }
+    const auto curr = Clock::now();
+    while (!__M_heap.empty() && __M_heap.top().first <= curr) {
+        std::unique_ptr ptr = std::move(__M_heap.top().second);
+        __M_heap.pop();
+        ptr->__M_res = 0;
+        ptr->__M_token(ptr.get());
+    }
+    schedule();
 }
 
 template <typename Clock>

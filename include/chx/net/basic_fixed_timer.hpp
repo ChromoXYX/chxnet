@@ -3,6 +3,7 @@
 #include "./io_context.hpp"
 #include "./detail/dary_heap.hpp"
 #include "./detail/tracker.hpp"
+#include "./ktimer.hpp"
 
 #include <chrono>
 
@@ -23,35 +24,35 @@ class basic_fixed_timer
     std::vector<std::unique_ptr<io_context::task_t>> __M_paused;
     std::vector<std::unique_ptr<io_context::task_t>> __M_trash;
 
-    io_context::task_t __M_task;
+    io_context::task_t __M_timer_task;
+    io_context::task_t __M_poll_task;
 
     io_context* __M_ctx = nullptr;
-    bool __M_is_looping = false;
+    const std::chrono::nanoseconds __M_res;
 
-    void do_loop2();
+    ktimer __M_ktimer;
 
-    void do_flush() {
-        __M_is_looping = false;
-        auto trash = std::move(__M_trash);
-        for (auto& ptr : trash) {
-            ptr->__M_token(ptr.get());
-            ptr.reset();
-        }
-        auto curr = Clock::now();
-        while (!__M_heap.empty() && __M_heap.top().first <= curr) {
-            std::unique_ptr ptr = std::move(__M_heap.top().second);
-            __M_heap.pop();
-            ptr->__M_res = 0;
-            ptr->__M_token(ptr.get());
-        }
-        do_loop2();
-    }
+    bool __M_is_polling = false;
+    bool __M_is_ktimer_polling = false;
+
+    void schedule();
+    void callback();
 
   public:
-    basic_fixed_timer(io_context& ctx) : __M_ctx(&ctx), __M_task(&ctx) {
-        __M_task.__M_persist = true;
-        __M_task.__M_token.emplace([this](io_context::task_t*) {
-            do_flush();
+    basic_fixed_timer(io_context& ctx)
+        : __M_ctx(&ctx), __M_timer_task(&ctx), __M_poll_task(&ctx),
+          __M_ktimer(ctx), __M_res(std::chrono::milliseconds(500)) {
+        __M_poll_task.__M_persist = true;
+        __M_poll_task.__M_token.emplace([this](io_context::task_t*) {
+            __M_is_polling = false;
+            callback();
+            return 0;
+        });
+
+        __M_timer_task.__M_persist = true;
+        __M_timer_task.__M_token.emplace([this](io_context::task_t*) {
+            __M_is_ktimer_polling = false;
+            callback();
             return 0;
         });
     }

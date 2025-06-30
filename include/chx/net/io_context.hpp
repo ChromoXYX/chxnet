@@ -348,7 +348,7 @@ class io_context {
 
   public:
     io_context(struct io_uring_params params = {},
-               std::size_t static_task_sz = 32768)
+               std::size_t static_task_sz = 4096)
         : __M_ring_sz(static_task_sz > 4096 ? static_task_sz : 4096),
           __M_outstanding_task_list(this) {
         params.flags |= IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN;

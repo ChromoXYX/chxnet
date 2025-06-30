@@ -156,8 +156,9 @@ class dary_heap
     void erase(iterator pos) {
         auto tail = end() - 1;
         std::swap(*pos, *tail);
-        d_ary::sift_down<D>(begin(), tail, std::distance(begin(), pos),
-                            compare());
+        const std::size_t idx = std::distance(begin(), pos);
+        d_ary::sift_down<D>(begin(), tail, idx, compare());
+        d_ary::sift_up<D>(begin(), idx, compare());
         __M_c.pop_back();
     }
 
