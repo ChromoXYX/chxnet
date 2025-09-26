@@ -19,6 +19,18 @@ template <std::size_t StorageSize> struct basic_task_decl {
     struct cancellation_controller_base {
         virtual void cancel(basic_task_decl*) = 0;
         virtual ~cancellation_controller_base() = default;
+
+        virtual bool is_static() const noexcept(true) { return false; }
+    };
+    struct cancellation_controller_deleter
+        : std::default_delete<cancellation_controller_base> {
+        using std::default_delete<cancellation_controller_base>::operator=;
+        void operator()(cancellation_controller_base* ptr) const {
+            if (!ptr->is_static()) {
+                std::default_delete<cancellation_controller_base>::operator()(
+                    ptr);
+            }
+        }
     };
 
     basic_task_decl(io_context* p) noexcept(true) : __M_ctx(p) {
@@ -50,7 +62,8 @@ template <std::size_t StorageSize> struct basic_task_decl {
         __CT_no_cancel
     } __M_cancel_type = __CT_io_uring_based;
 
-    detail::unique_ptr_std_layout<cancellation_controller_base>
+    detail::unique_ptr_std_layout<cancellation_controller_base,
+                                  cancellation_controller_deleter>
         __M_custom_cancellation;
 
     basic_task_decl* __M_prev = nullptr;

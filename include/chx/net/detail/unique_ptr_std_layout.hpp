@@ -20,6 +20,10 @@ struct unique_ptr_std_layout : D {
             other) noexcept(std::is_nothrow_constructible_v<D, _D&&>)
         : D(std::move(other)), __M_ptr(other.release()) {}
 
+    constexpr unique_ptr_std_layout(pointer p) noexcept(
+        std::is_nothrow_default_constructible_v<deleter_type>)
+        : __M_ptr(p) {}
+
     template <typename _T, typename _D>
     constexpr unique_ptr_std_layout(std::unique_ptr<_T, _D>&& other) noexcept(
         std::is_nothrow_constructible_v<D, _D&&>)

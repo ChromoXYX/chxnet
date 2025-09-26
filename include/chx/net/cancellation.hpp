@@ -102,4 +102,18 @@ decltype(auto) bind_cancellation_signal(cancellation_signal& signal,
                 signal, task, *g);
         });
 }
+
+template <typename Callable, typename TaskDecl = task_decl>
+inline detail::unique_ptr_std_layout<
+    typename TaskDecl::cancellation_controller_base,
+    typename TaskDecl::cancellation_controller_deleter>
+static_cancellation_controller() {
+    struct impl : TaskDecl::cancellation_controller_base {
+        Callable callable;
+        virtual void cancel(TaskDecl* task) override { callable(task); }
+        virtual bool is_static() const noexcept(true) { return true; }
+    };
+    static impl impl;
+    return {&impl};
+}
 }  // namespace chx::net
