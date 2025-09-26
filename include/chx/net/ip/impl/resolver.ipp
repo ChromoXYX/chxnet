@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../resolver.hpp"
+#include "../../cancellation.hpp"
 #include "../../detail/atomic.hpp"
 #include "../../detail/task_carrier.hpp"
 #include <netdb.h>
@@ -131,15 +132,16 @@ decltype(auto) ip::resolver::async_resolve(std::string hostname,
             std::move(q),
             [this](task_decl* task, auto ti, impl::query_type* q) {
                 task->__M_additional_ptr = q;
-                struct cancel_impl : task_decl::cancellation_controller_base {
-                    void cancel(task_decl* self) override {
+                struct cancel_impl {
+                    void operator()(task_decl* self) const {
                         auto* q = static_cast<net::detail::async_operation<
                             net::detail::tags::resolver>::query_type*>(
                             self->__M_additional_ptr);
                         q->is_cancelled.store(true, std::memory_order_relaxed);
                     }
                 };
-                task->__M_custom_cancellation = std::make_unique<cancel_impl>();
+                task->__M_custom_cancellation =
+                    static_cancellation_controller<cancel_impl>();
 
                 __M_ch.post(task);
                 __M_posted.fetch_add(1, std::memory_order_relaxed);
