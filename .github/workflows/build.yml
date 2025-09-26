@@ -1,0 +1,56 @@
+name: Build chxnet examples
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify kernel version (>= 6.1)
+        run: |
+          set -e
+          current=$(uname -r | sed 's/-.*//' | cut -d. -f1,2)
+          required=6.1
+          echo "Detected kernel: ${current}; required: ${required}"
+          first=$(printf "%s\n%s\n" "$required" "$current" | sort -V | head -n1)
+          if [ "$first" != "$required" ]; then
+            echo "Error: kernel ${current} < ${required}"
+            exit 1
+          fi
+          echo "Kernel requirement satisfied."
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            autoconf automake libtool pkg-config \
+            liburing-dev \
+            libssl-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build and install llhttp
+        run: |
+          git clone --depth 1 https://github.com/nodejs/llhttp.git
+          cd llhttp
+          npm ci
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+
+      - name: Build examples
+        working-directory: example
+        run: |
+          autoreconf -iv
+          ./configure --with-llhttp=yes
+          make -j$(nproc)

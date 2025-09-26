@@ -26,7 +26,7 @@ template <> struct async_operation<tags::async_write_seq> {
         template <typename STRM, typename Seq>
         operation(STRM&& strm, Seq&& seq)
             : stream(std::forward<STRM>(strm)),
-              sequence(std::forward<Seq>(seq)), iov_arr(fill_iov(sequence)) {}
+              sequence(std::forward<Seq>(seq)), iov_arr(flatten_sequence(sequence)) {}
 
         template <typename Cntl> void operator()(Cntl& cntl) {
             stream.async_write_some(iov_arr, cntl.next());
