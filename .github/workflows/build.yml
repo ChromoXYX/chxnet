@@ -1,4 +1,4 @@
-name: Build chxnet examples
+name: Build examples
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-examples:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
