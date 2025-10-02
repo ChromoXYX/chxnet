@@ -43,7 +43,7 @@ class io_context {
      */
     using task_t = task_decl;
 
-  public:
+  protected:
     struct message_base {
         virtual ~message_base() = default;
         virtual int operator()(io_context*) = 0;
@@ -119,7 +119,7 @@ class io_context {
     } __M_msg_interrupt_data;
     static_assert(sizeof(__M_msg_interrupt_data));
 
-  public:
+  protected:
     task_t* acquire() {
         try {
             task_t* r = __M_task_pool.pop() ?: new task_t(this);

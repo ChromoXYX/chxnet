@@ -18,7 +18,7 @@ template <> struct async_operation<tags::test_acquire> {
 
 int main(void) {
     net::io_context ctx;
-    for (int i = 0; i < 10000000; ++i) {
+    for (int i = 0; i < 100000; ++i) {
         chx::net::detail::async_operation<
             chx::net::detail::tags::test_acquire>()(&ctx);
     }

@@ -78,7 +78,9 @@ template <typename CompletionToken, typename Value> struct as_tuple_impl2 {
         return as_tuple_impl3(
             std::forward<FinalFunctor>(final_functor),
             as_tuple_base_callable(
-                detail::async_token_generate(task, fake_final_functor(), ct),
+                detail::async_token_generate(
+                    task,
+                    [](auto& token, task_decl*) -> auto& { return token; }, ct),
                 detail::type_identity<Value>()));
     }
 

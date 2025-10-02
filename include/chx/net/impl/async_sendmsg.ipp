@@ -16,12 +16,24 @@ struct sendmsg {};
 }  // namespace tags
 
 template <> struct async_operation<tags::sendmsg> {
-    template <typename BindCompletionToken>
-    decltype(auto) operator()(io_context* ctx,
-                              BindCompletionToken&& bind_completion_token) {
-        task_decl* task = ctx->acquire();
-        return async_token_init(
-            task->__M_token.emplace(async_token_generate(
+    template <typename Socket, typename BindCompletionToken>
+    decltype(auto) sendmsg(io_context& ctx, Socket& socket,
+                           const msghdr& msghdr,
+                           BindCompletionToken&& bind_completion_token) {
+        struct msghdr opts = msghdr;
+        opts.msg_iovlen = std::min(std::size_t{IOV_MAX}, opts.msg_iovlen);
+
+        auto carrier = task_carrier_s2(
+            std::forward<BindCompletionToken>(bind_completion_token), opts,
+            [&socket](task_decl* task, auto ti, struct msghdr* msghdr) {
+                io_context* ctx = &task->get_associated_io_context();
+                io_uring_sqe* sqe = ctx->get_sqe(task);
+                io_uring_prep_sendmsg(sqe, socket.native_handler(), msghdr, 0);
+            });
+
+        task_decl* task = ctx.acquire();
+        return async_token_init(task->__M_token.emplace(
+            async_token_generate(
                 task,
                 [](auto& token, task_decl* self) -> int {
                     const io_uring_cqe* cqe = self->__M_cqe;
@@ -29,14 +41,27 @@ template <> struct async_operation<tags::sendmsg> {
                     token(res >= 0 ? std::error_code{} : make_ec(-res), res);
                     return 0;
                 },
-                bind_completion_token)),
-            bind_completion_token);
+                carrier),
+            carrier));
     }
 
-    template <typename BindCompletionToken>
-    decltype(auto) zero_copy(io_context* ctx,
+    template <typename Socket, typename BindCompletionToken>
+    decltype(auto) zero_copy(io_context& ctx, Socket& socket,
+                             const msghdr& msghdr,
                              BindCompletionToken&& bind_completion_token) {
-        task_decl* task = ctx->acquire();
+        struct msghdr opts = msghdr;
+        opts.msg_iovlen = std::min(std::size_t{IOV_MAX}, opts.msg_iovlen);
+
+        auto carrier = task_carrier_s2(
+            std::forward<BindCompletionToken>(bind_completion_token), opts,
+            [&socket](task_decl* task, auto ti, struct msghdr* msghdr) {
+                io_context* ctx = &task->get_associated_io_context();
+                io_uring_sqe* sqe = ctx->get_sqe(task);
+                io_uring_prep_sendmsg_zc(sqe, socket.native_handler(), msghdr,
+                                         0);
+            });
+
+        task_decl* task = ctx.acquire();
         return async_token_init(
             task->__M_token.emplace(async_token_generate(
                 task,
@@ -50,8 +75,8 @@ template <> struct async_operation<tags::sendmsg> {
                     }
                     return 0;
                 },
-                bind_completion_token)),
-            bind_completion_token);
+                carrier)),
+            carrier);
     }
 
     template <typename Socket, typename RealSequence, typename CntlType = int>
@@ -98,18 +123,10 @@ template <typename Socket, typename CompletionToken>
 decltype(auto) chx::net::async_sendmsg(io_context& ctx, Socket& socket,
                                        const msghdr& msghdr,
                                        CompletionToken&& completion_token) {
-    struct msghdr opts = msghdr;
-    opts.msg_iovlen = std::min(std::size_t{IOV_MAX}, opts.msg_iovlen);
-    return detail::async_operation<detail::tags::sendmsg>()(
-        &ctx,
-        detail::task_carrier_s2(
-            detail::async_token_bind<const std::error_code&, std::size_t>(
-                std::forward<CompletionToken>(completion_token)),
-            opts, [&socket](task_decl* task, auto ti, struct msghdr* msghdr) {
-                io_context* ctx = &task->get_associated_io_context();
-                io_uring_sqe* sqe = ctx->get_sqe(task);
-                io_uring_prep_sendmsg(sqe, socket.native_handler(), msghdr, 0);
-            }));
+    return detail::async_operation<detail::tags::sendmsg>().sendmsg(
+        ctx, socket, msghdr,
+        detail::async_token_bind<const std::error_code&, std::size_t>(
+            std::forward<CompletionToken>(completion_token)));
 }
 
 template <typename Socket, typename CompletionToken>
@@ -117,18 +134,10 @@ decltype(auto)
 chx::net::async_sendmsg_zero_copy(io_context& ctx, Socket& socket,
                                   const msghdr& msghdr,
                                   CompletionToken&& completion_token) {
-    struct msghdr opts = msghdr;
-    opts.msg_iovlen = std::min(std::size_t{IOV_MAX}, opts.msg_iovlen);
     return detail::async_operation<detail::tags::sendmsg>().zero_copy(
-        &ctx,
-        detail::task_carrier_s2(
-            detail::async_token_bind<const std::error_code&, std::size_t>(
-                std::forward<CompletionToken>(completion_token)),
-            opts, [&socket](task_decl* task, auto ti, struct msghdr* msghdr) {
-                io_context* ctx = &task->get_associated_io_context();
-                io_uring_sqe* sqe = ctx->get_sqe(task);
-                io_uring_prep_sendmsg(sqe, socket.native_handler(), msghdr, 0);
-            }));
+        ctx, socket, msghdr,
+        detail::async_token_bind<const std::error_code&, std::size_t>(
+            std::forward<CompletionToken>(completion_token)));
 }
 
 template <typename Socket, typename Sequence, typename CompletionToken>
