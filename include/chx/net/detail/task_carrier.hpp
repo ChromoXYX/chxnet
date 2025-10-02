@@ -6,12 +6,17 @@
 namespace chx::net::detail {
 template <typename GeneratedCompletionToken, typename Data>
 struct task_carrier_s3 : GeneratedCompletionToken {
-    Data data;
-
     template <typename GCT, typename D>
     constexpr task_carrier_s3(GCT&& gct, D&& d)
         : GeneratedCompletionToken(std::forward<GCT>(gct)),
-          data(std::forward<D>(d)) {}
+          __M_data(std::forward<D>(d)) {}
+
+    constexpr Data* get_task_carrier_data() noexcept(true) {
+        return std::addressof(__M_data);
+    }
+
+  private:
+    Data __M_data;
 };
 template <typename GeneratedCompletionToken, typename Data>
 task_carrier_s3(GeneratedCompletionToken&&, Data&&)
@@ -50,10 +55,10 @@ struct task_carrier_s2 {
             std::move(data));
     }
     template <typename TI> constexpr decltype(auto) get_init(TI ti) {
-        callback(task, ti,
-                 std::addressof(get_s3(static_cast<typename TI::type*>(
-                                           task->get_underlying_data()))
-                                    ->data));
+        callback(
+            task, ti,
+            get_s3(static_cast<typename TI::type*>(task->get_underlying_data()))
+                ->get_task_carrier_data());
         return async_token_init(ti, bind_completion_token);
     }
 };

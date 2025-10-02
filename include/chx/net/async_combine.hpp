@@ -238,11 +238,13 @@ struct async_combine_impl
             self->__M_subtasks.push_back(task);
             return next_then_2(
                 std::forward<FinalFunctor>(final_functor),
-                next_then_callable(self, task,
-                                   std::move(async_token_generate(
-                                       task, fake_final_functor(),
-                                       std::forward<BindCompletionToken>(
-                                           bind_completion_token))(nullptr))));
+                next_then_callable(
+                    self, task,
+                    std::move(async_token_generate(
+                        task,
+                        [](auto& token, task_decl*) -> auto& { return token; },
+                        std::forward<BindCompletionToken>(
+                            bind_completion_token))(nullptr))));
         }
         template <typename T> decltype(auto) get_init(T t) {
             return async_token_init(t, bind_completion_token);
@@ -303,8 +305,9 @@ template <> struct async_operation<tags::combine> {
         task->__M_cancel_type = task->__CT_invoke_cancel;
         using __ctad_type = decltype(detail::async_combine_impl(
             std::integral_constant<bool, EnableReferenceCount>{}, task,
-            std::move(detail::async_token_generate(task, fake_final_functor(),
-                                                   completion_token)(nullptr)),
+            std::move(detail::async_token_generate(
+                task, [](auto& token, task_decl*) -> auto& { return token; },
+                completion_token)(nullptr)),
             opt, std::move(args),
             std::make_integer_sequence<std::size_t, sizeof...(OpArgs)>{},
             std::move(init_param)));
@@ -313,7 +316,9 @@ template <> struct async_operation<tags::combine> {
                 detail::inplace,
                 std::integral_constant<bool, EnableReferenceCount>{}, task,
                 std::move(detail::async_token_generate(
-                    task, fake_final_functor(), completion_token)(nullptr)),
+                    task,
+                    [](auto& token, task_decl*) -> auto& { return token; },
+                    completion_token)(nullptr)),
                 opt, std::move(args),
                 std::make_integer_sequence<std::size_t, sizeof...(OpArgs)>{},
                 std::move(init_param)),

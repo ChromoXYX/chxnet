@@ -56,14 +56,5 @@ async_token_init(TypeIdentity, CompletionToken&& token) noexcept(true) {
         return;
     }
 };
-
-struct fake_final_functor {
-    // ONLY return LVALUE reference
-    template <typename GeneratedToken>
-    constexpr GeneratedToken& operator()(GeneratedToken& generated_token,
-                                         task_decl*) noexcept(true) {
-        return generated_token;
-    }
-};
 }  // namespace detail
 }  // namespace chx::net
