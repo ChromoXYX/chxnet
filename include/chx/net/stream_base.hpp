@@ -41,6 +41,11 @@ class stream_base {
     int __M_fd = -1;
 
   public:
+    struct poll_result {
+        int revents = {};
+        bool more = false;
+    };
+
     constexpr stream_base(io_context& ctx) noexcept(true) : __M_ctx(&ctx) {}
     constexpr stream_base(io_context& ctx, int fd) noexcept(true)
         : __M_ctx(&ctx), __M_fd(fd) {}
@@ -180,30 +185,6 @@ class stream_base {
     void cancel() {
         net::detail::async_operation<detail::tags::cancel_fd>()(
             &get_associated_io_context(), native_handler());
-    }
-
-    enum shutdown_type : int {
-        shutdown_receive = SHUT_RD,
-        shutdown_write = SHUT_WR,
-        shutdown_both = SHUT_RDWR
-    };
-
-    void shutdown(shutdown_type how) {
-        if (::shutdown(__M_fd, how) == 0) {
-            return;
-        } else {
-            __CHXNET_THROW(errno);
-        }
-    }
-
-    void shutdown(shutdown_type how, std::error_code& ec) noexcept(true) {
-        if (is_open()) {
-            if (::shutdown(__M_fd, how) == 0) {
-                ec.clear();
-            } else {
-                net::assign_ec(ec, errno);
-            }
-        }
     }
 
     template <typename CompletionToken>
@@ -383,8 +364,10 @@ chx::net::detail::async_operation<chx::net::detail::tags::sock_poll>::multi(
         task->__M_token.emplace(async_token_generate(
             task,
             [](auto& token, io_context::task_t* self) -> int {
-                token(get_ec(self), self->__M_cqe->flags & IORING_CQE_F_MORE,
-                      get_res(self));
+                token(get_ec(self), stream_base::poll_result{
+                                        get_res(self),
+                                        static_cast<bool>(self->__M_cqe->flags &
+                                                          IORING_CQE_F_MORE)});
                 return 0;
             },
             bind_completion_token)),
@@ -397,6 +380,6 @@ chx::net::stream_base::async_poll_multi(int event,
                                         CompletionToken&& completion_token) {
     return detail::async_operation<detail::tags::sock_poll>().multi(
         &get_associated_io_context(), *this, event,
-        detail::async_token_bind<const std::error_code&, bool, unsigned short>(
+        detail::async_token_bind<const std::error_code&, poll_result>(
             std::forward<CompletionToken>(completion_token)));
 }

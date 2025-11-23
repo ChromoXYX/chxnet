@@ -75,6 +75,30 @@ class tcp::socket : public detail::basic_socket<tcp> {
         return lower_layer();
     }
 
+    enum shutdown_type : int {
+        shutdown_receive = SHUT_RD,
+        shutdown_write = SHUT_WR,
+        shutdown_both = SHUT_RDWR
+    };
+
+    void shutdown(shutdown_type how) {
+        if (::shutdown(__M_fd, how) == 0) {
+            return;
+        } else {
+            __CHXNET_THROW(errno);
+        }
+    }
+
+    void shutdown(shutdown_type how, std::error_code& ec) noexcept(true) {
+        if (is_open()) {
+            if (::shutdown(__M_fd, how) == 0) {
+                ec.clear();
+            } else {
+                net::assign_ec(ec, errno);
+            }
+        }
+    }
+
     template <typename CompletionToken>
     decltype(auto) async_connect(const ip::tcp::endpoint& end_point,
                                  CompletionToken&& completion_token) {

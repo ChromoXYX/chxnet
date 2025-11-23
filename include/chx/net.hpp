@@ -7,6 +7,7 @@
 #include "net/async_operation.hpp"
 #include "net/async_read.hpp"
 #include "net/async_read_until.hpp"
+#include "net/async_recvmsg.hpp"
 #include "net/async_sendfile.hpp"
 #include "net/async_sendmsg.hpp"
 #include "net/async_token.hpp"

@@ -176,6 +176,9 @@ struct async_combine_impl
     template <typename Tag> constexpr auto next_with_tag() noexcept(true) {
         return task_aware(next_guard_with_tag<Tag>(this));
     }
+    template <typename Tag> constexpr auto next_with_tag(Tag) noexcept(true) {
+        return next_with_tag<Tag>();
+    }
 
     template <typename GeneratedToken>
     struct next_then_callable : GeneratedToken {

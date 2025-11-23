@@ -278,6 +278,14 @@ class address {
             return address_v4(ntohl(addr4->sin_addr.s_addr));
         }
     }
+    static address
+    from_sockaddr(const struct sockaddr_in* addr) noexcept(true) {
+        return address_v4(ntohl(addr->sin_addr.s_addr));
+    }
+    static address
+    from_sockaddr(const struct sockaddr_in6* addr) noexcept(true) {
+        return address_v6(addr->sin6_addr);
+    }
 };
 
 template <typename Protocol> struct basic_endpoint {

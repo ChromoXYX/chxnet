@@ -19,6 +19,11 @@ template <typename T> struct span {
     constexpr T* data() noexcept(true) { return __M_ptr; }
     constexpr const T* data() const noexcept(true) { return __M_ptr; }
 
+    constexpr span subspan(std::size_t offset,
+                           std::size_t count = -1) noexcept(true) {
+        return {data() + offset, count != -1 ? count : size() - offset};
+    }
+
   private:
     T* __M_ptr = nullptr;
     std::size_t __M_n = 0;

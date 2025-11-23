@@ -15,12 +15,12 @@ struct session : std::enable_shared_from_this<session> {
         socket.async_poll_multi(
             POLLIN,
             bind_cancellation_signal(
-                signal,
-                [self = shared_from_this()](const std::error_code& ec,
-                                            bool next, unsigned short event) {
+                signal, [self = shared_from_this()](const std::error_code& ec,
+                                                    auto res) {
+                    auto [revents, next] = res;
                     printf("Poll: %s, Next %d, Event %d\n",
-                           ec.message().c_str(), next, event);
-                    if (!ec && (event & POLLIN)) {
+                           ec.message().c_str(), next, revents);
+                    if (!ec && (revents & POLLIN)) {
                         self->socket.async_read_some(
                             net::buffer(self->buffer),
                             [self](const std::error_code& e, std::size_t s) {

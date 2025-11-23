@@ -63,6 +63,7 @@ struct basic_token_storage {
 
         virtual __ret_type invoke(_Ts... _ts) = 0;
         virtual void destruct(basic_token_storage& self) = 0;
+        virtual void* underlying_data() noexcept(true) = 0;
     };
     template <typename, typename> struct __wrapper_impl;
     template <typename _R, typename... _Ts>
@@ -70,16 +71,16 @@ struct basic_token_storage {
         : __base_impl<std::tuple<_Ts...>> {
         static_assert(std::is_nothrow_destructible<_R>::value);
 
-        union {
-            _R _M_r;
-            char _c;
-        };
+        _R _M_r;
 
         template <typename... _Args>
-        __wrapper_impl(_Args&&... _args) : _M_r(std::forward<_Args>(_args)...) {
-            static_assert(get_offset_of<&__wrapper_impl::_c>::value == 8);
+        __wrapper_impl(_Args&&... _args)
+            : _M_r(std::forward<_Args>(_args)...) {}
+        ~__wrapper_impl() override {}
+
+        virtual void* underlying_data() noexcept(true) override {
+            return std::addressof(_M_r);
         }
-        ~__wrapper_impl() override { _M_r.~_R(); }
 
         virtual __ret_type invoke(_Ts... _ts) override {
             return _M_r(std::forward<_Ts>(_ts)...);
@@ -92,6 +93,8 @@ struct basic_token_storage {
     struct __wrapper_impl<__empty_fn_placeholder<_N>, std::tuple<_Ts...>>
         : __base_impl<std::tuple<_Ts...>> {
         unsigned char __b[_N];
+
+        virtual void* underlying_data() noexcept(true) override { return __b; }
 
         virtual __ret_type invoke(_Ts... _ts) override { return {}; }
         virtual void destruct(basic_token_storage& self) override {
@@ -236,7 +239,9 @@ struct basic_token_storage {
     constexpr operator bool() const noexcept { return valid(); }
 
     void clear() noexcept(true) { __destroy_and_release(); }
-    void* underlying_data() const noexcept(true) { return (char*)__M_ptr + 8; }
+    void* underlying_data() const noexcept(true) {
+        return __M_ptr->underlying_data();
+    }
     void destruct() { __M_ptr->destruct(*this); }
 
     template <typename... Args> decltype(auto) operator()(Args&&... args) {
